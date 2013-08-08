@@ -14,21 +14,6 @@ export v8_mode = \Release
 # XXX - I REALLY want to integrate fiber support into sencillo
 #     - it should be transparent to the programmer whether it's a sync func or not
 
-if nw_version or true
-	global.Fiber = (cb) ->
-		return {
-			run: -> cb!
-		}
-	global.Future = ->
-		return {
-			wait: -> throw new Error "Future.wait not implemented!"
-			return: -> throw new Error "Future.return not implemented!"
-		}
-else
-	global.Fiber = require \fibers
-	global.Future = require \fibers/future
-
-(<- Fiber
 
 scan = (str) ->
 	re = /(?:(\S*"[^"]+")|(\S*'[^']+')|(\S+))/g
@@ -213,7 +198,7 @@ export recursive_hardlink = (path, into, cb) ->
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
-export Config = (path, initial_obj, save_fn) ->
+export Config = (path, initial_obj, opts, save_fn) ->
 	#TODO: if path ends with .js/.ls then precompile it first
 	#TODO: add global path
 	#TODO: add file watching
@@ -221,56 +206,72 @@ export Config = (path, initial_obj, save_fn) ->
 	debug = (require 'debug') 'config:'+path
 	#EventEmitter = require \events .EventEmitter
 	EventEmitter = require \eventemitter2 .EventEmitter2
-
-	if typeof WeakMap isnt \function
-		global.WeakMap = require 'es6-collections' .WeakMap
-	if typeof Proxy isnt \object and not process.versions.'node-webkit' #global.window?navigator
-		#debug "installing node-proxy cheat..."
+	WeakMap = global.WeakMap
+	Proxy = global.Proxy
+	Reflect = global.Reflect
+	if typeof WeakMap is \undefined
+		WeakMap = global.WeakMap = require 'es6-collections' .WeakMap
+	if typeof Proxy is \undefined and not process.versions.'node-webkit' #global.window?navigator
+		console.log "!!!!!!! installing node-proxy cheat..."
 		global.Proxy = Proxy = require 'node-proxy'
 	# reflection is the last thing required for dynamic objects
-	if typeof Reflect isnt \function then require 'harmony-reflect'
-
-	try
-		_config = Fs.readFileSync path, 'utf-8'
-		_config = JSON.parse _config
-	catch ex
-		#throw ex
-		_config = {}
-		mkdir Path.dirname path
+	if typeof Reflect is \undefined
+		require 'harmony-reflect'
+		Reflect = global.Reflect
+	ee = new EventEmitter
+	var config
 
 	if typeof initial_obj is \function
+		# we're just gonna assume, that the last argument is a function.
+		# if it's not, you're calling it wrong!
+		opts = {+watch}
 		save_fn = initial_obj
-	else if typeof initial_obj is \object
-		_config = initial_obj <<< _config
+	else if typeof opts is \function
+		save_fn = opts
+		opts {+watch}
+	#else if typeof initial_obj is \object
+	#	_config = initial_obj <<< _config
 
-	ee = new EventEmitter
-	save = _.throttle (->
-		if Config._saving[path]
-			debug "#path already being saved... waiting 10ms before trying again"
-			# OPTIMIZE: in certain cases, maybe I could be saving twice...
-			return #setTimeout save, 10ms
-		Config._saving[path] = true
-		obj = config #Config._[path]
-		debug "saving...", path
-		# used to test slow saves... 50ms delay
-		/*
-		future = new Future
-		setTimeout ->
-			future.return!
-		, 50ms
-		future.wait!
-		#*/
+	#save = _.throttle (->
+	iid = false
+	save = ->
+		Config._saving[path]++
+		if iid is false
+			iid := setInterval (->
+				#if Config._saving[path]
+				#	debug "#path already being saved... waiting 10ms before trying again"
+				#	# OPTIMIZE: in certain cases, maybe I could be saving twice...
+				#	return setTimeout save, 10ms
+				#Config._saving[path] = true
+				#obj = _.cloneDeep(config) #Config._[path]
+				obj = config #Config._[path]
+				#console.log "saving...", path
+				# used to test slow saves... 50ms delay
+				/*
+				future = new Future
+				setTimeout ->
+					future.return!
+				, 50ms
+				future.wait!
+				#*/
 
-		debug "writing...", path, obj
-		writeFile path, JSON.stringify(obj, null, '\t'), (err) ->
-			if typeof save_fn is \function => save_fn obj
-			Config._saving[path] = false
-			ee.emit \save obj
-	), 10ms, leading: true trailing: true
+
+				debug "writing...", path
+				console.log "writing...", obj
+				console.log "writing...", JSON.stringify(_.cloneDeep(obj), null, '\t')
+				Config._saving[path] = 0
+				writeFile path, JSON.stringify(obj, null, '\t'), (err) ->
+					if typeof save_fn is \function => save_fn obj
+					ee.emit \save obj
+					unless Config._saving[path]
+						console.log "clearInterval"
+						clearInterval iid
+			), 100ms #, leading: true trailing: true
+	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
 	make_reflective = (o, oon, scoped_ee) ->
 		oo = if Array.isArray o then [] else {}
 		unless scoped_ee then scoped_ee = new EventEmitter wildcard: true
-		reflective = Reflect.Proxy {}, {
+		reflective = Reflect.Proxy oo, {
 			enumerable: true
 			enumerate: (obj) -> Object.keys oo
 			hasOwn: (obj, key) -> typeof oo[key] isnt \undefined
@@ -292,9 +293,11 @@ export Config = (path, initial_obj, save_fn) ->
 					if name is \_all #or name is \name
 						scoped_ee[name] = val
 					else
-						debug "set: %s -> %s", prop, val
+						console.log "set: %s -> %s", prop, val
 						if typeof val is \object
 							val = make_reflective val, prop
+							#if typeof o[name] isnt \object
+							#	oo[name] = {}
 						oo[name] = val
 						save!
 				return val
@@ -302,20 +305,35 @@ export Config = (path, initial_obj, save_fn) ->
 		for k, v of o => reflective[k] = v # defineProperty??
 		return reflective
 	Config._saving[path] = true
-	Config._[path] = config = make_reflective _config, '', ee
+	Config._[path] = config = make_reflective {}, '', ee
 	if initial_obj then _.each initial_obj, (v, k) ->
 		if k isnt \_events
 			if typeof v is \object
 				config[k] = make_reflective v, k, save
 			else
 				Config._[path][k] = v
-	/*
-	Object.defineProperty config, "_events", {
-		get: -> ee
-	}*/
 
-	debug "created Config object"
-	Config._saving[path] = false
+	Fs.readFile path, 'utf-8', (err, data) ->
+		try
+			_config = JSON.parse data
+			_.each _config, (v, k) ->
+				if typeof v is \object
+					config[k] = make_reflective v, k, save
+				else
+					Config._[path][k] = v
+		catch ex
+			#throw ex
+			mkdir Path.dirname path
+		debug "created Config object"
+		Config._saving[path] = false
+		config.emit \ready
+
+		/*
+		Object.defineProperty config, "_events", {
+			get: -> ee
+		}*/
+
+
 	config
 Config._saving = {}
 Config._ = {}
@@ -323,4 +341,3 @@ Config._ = {}
 #	for k, v of Config._saving
 #		if v
 
-).run!

@@ -49,290 +49,296 @@ utils = {
 # TODO: add fsm logging capability (and show this log inside of verse)
 
 #export class Fsm
-export Fsm = (name, options) ->
-	if typeof name is \string
-		name += '.fsm'
-	else
-		options = name
-		name = utils.makeFsmNamespace!
-	debug = Debug name
+#export Fsm = (name, options) ->
 
-	class Fsm
-		(name, options) ->
-			_.extend @, options
-			_.defaults @, utils.getDefaultOptions name
-			@initialize.apply @, [options]
-			#machina.emit NEW_FSM, @
-			@transitionSoon @initialState if @initialState
 
-		initialize: ->
-		# make getter / setter?
-		concurrency: Infinity
-		tasks: {}
-		emit: (eventName) ~>
-			if @muteEvents then return
-			args = &
-			doEmit = ~>
-				debug "emit: %s", eventName
-				if listeners = @eventListeners.'*'
-					if typeof listeners is \function then listeners.apply this, args
-					else _.each @eventListeners.'*', ((callback) -> callback.apply this, args), this
-				if listeners = @eventListeners[eventName]
-					args1 = slice.call args, 1
-					if typeof listeners is \function then listeners.apply this, args1
-					else _.each listeners, ((callback) -> callback.apply this, args1), this
-			if false and typeof Fiber isnt \undefined
-				Fiber(doEmit).run!
-			else doEmit!
-		emitSoon: ~> a = &; process.nextTick ~> @emit.apply @, a
-		transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
-		exec: (inputType) ~>
-			debug "handle: %s", inputType
-			if not @inExitHandler
-				states = @states
-				current = @state
-				args = slice.call &, 0
-				handlerName = void
-				handler = void
-				catchAll = void
-				@currentActionArgs = args
-				if states[current][inputType] or states[current].'*' or @.'*'
-					handlerName = if states[current][inputType] then inputType else '*'
-					catchAll = handlerName is '*'
-					if states[current][handlerName]
-						handler = states[current][handlerName]
-						@_currentAction = current + '.' + handlerName
-					else
-						handler = @.'*'
-						@_currentAction = '*'
-					@emit.call this, HANDLING, {
-						type: inputType
-						args: args.slice 1
-					}
-					if (Object::toString.call handler) is '[object String]' then @transition handler else handler.apply this, if catchAll then args else args.slice 1
-					@emit.call this, HANDLED, {
-						type: inputType
-						args: args.slice 1
-					}
-					@_priorAction = @_currentAction
-					@_currentAction = ''
-					@processQueue NEXT_HANDLER
+export class Fsm
+	var debug
+	(name, options) ->
+		if typeof name is \string
+			name += '.fsm'
+		else
+			options = name
+			name = utils.makeFsmNamespace!
+		debug := Debug name
+		_.extend @, options
+		_.defaults @, utils.getDefaultOptions name
+		@initialize.apply @, [options] if @initialize
+		#machina.emit NEW_FSM, @
+		@transitionSoon @initialState if @initialState
+
+	initialize: ->
+	# make getter / setter?
+	concurrency: Infinity
+	tasks: {}
+	emit: (eventName) ~>
+		if @muteEvents then return
+		args = &
+		doEmit = ~>
+			debug "emit: %s", eventName
+			if listeners = @eventListeners.'*'
+				if typeof listeners is \function then listeners.apply this, args
+				else _.each @eventListeners.'*', ((callback) -> callback.apply this, args), this
+			if listeners = @eventListeners[eventName]
+				args1 = slice.call args, 1
+				if typeof listeners is \function then listeners.apply this, args1
+				else _.each listeners, ((callback) -> callback.apply this, args1), this
+		if false and typeof Fiber isnt \undefined
+			Fiber(doEmit).run!
+		else doEmit!
+	emitSoon: -> a = &; process.nextTick ~> @emit.apply @, a
+	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
+	exec: (inputType) ~>
+		debug "handle: %s", inputType
+		if not @inExitHandler
+			states = @states
+			current = @state
+			args = slice.call &, 0
+			handlerName = void
+			handler = void
+			catchAll = void
+			ret = void
+			@currentActionArgs = args
+			if states[current][inputType] or states[current].'*' or @.'*'
+				handlerName = if states[current][inputType] then inputType else '*'
+				catchAll = handlerName is '*'
+				if states[current][handlerName]
+					handler = states[current][handlerName]
+					@_currentAction = current + '.' + handlerName
 				else
-					obj = {
-						type: NEXT_TRANSITION
-						#untilState: inputType
-						args: args.slice 0
-					}
-					#debug "no handler (#{@state}).#{inputType}"
-					#if @emit.call(this, NO_HANDLER, obj) isnt false
-					@eventQueue.push obj
-				@currentActionArgs = ``undefined``
-		transition: (newState) ~>
-			debug "transition %s -> %s", @state, newState
-			if not @inExitHandler and newState isnt @state
-				oldState = void
-				if @states[newState]
-					@targetReplayState = newState
-					@priorState = @state
-					@state = newState
-					if oldState = @priorState
-						if @states[oldState] and @states[oldState]._onExit
-							@inExitHandler = true
-							@states[oldState]._onExit.call this
-							@inExitHandler = false
-						@emit.call this, TRANSITION, {
-							fromState: oldState
-							toState: newState
-						}
-					if @states[newState]._onEnter then @states[newState]._onEnter.call this
-					if @targetReplayState is newState then @processQueue NEXT_TRANSITION
-					#@processQueue NEXT_TRANSITION
-					return
-				debug "attempted to transition to an invalid state: %s", newState
-				#TODO: when the state machine is virtualized, ask the user to add the state
-				@emit.call this, INVALID_STATE, {
-					@state
-					attemptedState: newState
+					handler = @.'*'
+					@_currentAction = '*'
+				@emit.call this, HANDLING, {
+					type: inputType
+					args: args.slice 1
 				}
-		processQueue: (type) ->
-			#console.log "processQueue", NEXT_TRANSITION, NEXT_HANDLER
-			filterFn = if type is NEXT_TRANSITION
-				(item) -> item.type is NEXT_TRANSITION and (not item.untilState or item.untilState is @state)
+				if (Object::toString.call handler) is '[object String]'
+					@transition handler
+				else ret = handler.apply this, if catchAll then args else args.slice 1
+				@emit.call this, HANDLED, {
+					type: inputType
+					args: args.slice 1
+				}
+				@_priorAction = @_currentAction
+				@_currentAction = ''
+				@processQueue NEXT_HANDLER
 			else
-				(item) -> item.type is NEXT_HANDLER
-			toProcess = _.filter @eventQueue, filterFn, this
-			@eventQueue = _.difference @eventQueue, toProcess
-			_.each toProcess, ((item) -> @exec.apply this, item.args), this
-		clearQueue: (type, name) ->
-			if not type
-				@eventQueue = []
-			else
-				filter = void
-				if type is NEXT_TRANSITION
-					filter = (evnt) -> evnt.type is NEXT_TRANSITION and if name then evnt.untilState is name else true
-				else
-					if type is NEXT_HANDLER then filter = (evnt) -> evnt.type is NEXT_HANDLER
-				@eventQueue = _.filter @eventQueue, filter
-		deferUntilTransition: (stateName) ->
-			if @currentActionArgs
-				queued = {
+				obj = {
 					type: NEXT_TRANSITION
-					untilState: stateName
-					args: @currentActionArgs
+					#untilState: inputType
+					args: args.slice 0
 				}
-				@eventQueue.push queued
-				@emit.call this, DEFERRED, {
-					@state
-					queuedArgs: queued
-				}
-		deferUntilNextHandler: ->
-			if @currentActionArgs
-				queued = {
-					type: NEXT_TRANSITION
-					args: @currentActionArgs
-				}
-				@eventQueue.push queued
-				@emit.call this, DEFERRED, {
-					@state
-					queuedArgs: queued
-				}
-		task: (name, ...fns) ~>
-			debug "new task '%s'", name
-			self = this
-			task = new EventEmitter
-			task.name = name
-			task.i = 0
-			task.running = 0
-			task.complete = 0
-			task.concurrency = Infinity
-			task.results = []
-			task.chokes = []
-			task.fns = [] ++ fns.slice 0
-			task.branch = (name) ->
-				branch = self.task name
-				branch.parent = self
-				task.push (done) ->
-					branch.on \end ->
-						done ...
-				branch
-			task.choke = (fn) ->
-				debug "(%s): choke %d", name, @fns.length
-				@chokes.push @fns.length
-				@fns.push fn
-				task.done = false
-				if @i
-					@next!
-				task
-			task.add = (fn) ->
-				debug "(%s): push %d", name, @fns.length
-				i = @fns.length
-				#@fns.push fn
-				@fns.splice i, 0, fn
-				task.done = false
-				@next!
-				task
-			task.push = (fn) ->
-				debug "(%s): push %d", name, @fns.length
-				i = @fns.length
-				/*
-				_fn = fn
-				fn = (cb) ->
-					console.log i, "before"
-					_cb = cb
-					_fn ->
-						console.log i, "cb"
-						_cb ...
-					console.log i, "after"
-				*/
-				@fns.push fn
-				task.done = false
-				if i then @next!
-				task
-			task.end = (cb) ->
-				debug "(%s): end", name
-				task.once \end cb
-				process.nextTick ->
-					task.next!
-				task
-			task.next = ->
-				i = @i
-				fn = @fns[i]
-				is_choke = if ~@chokes.indexOf i then true else false
-				if typeof fn is \undefined or @running >= @concurrency
-					if typeof task.parent is \function then task.parent.next!
-					return # @onend null, @results, name
-				debug "(%s): running %d %s", name, i, is_choke
-				start = new Date
-				@i++
-				@running++
-				fn (err, res) ->
-					task.running--
-					if err
-						console.log "caught err", err.stack
-						task.done = true
-						task.emit \end, err
-					return if task.done
-					task.complete++
-					end = new Date
-					task.results[i] = res if res
-					debug "(%s): progress %d/%d (%d)", name, task.complete, task.fns.length, task.running
-					task.emit 'progress', {
-						index: i
-						value: res
-						pending: task.complete - task.fns.length
-						total: task.fns.length
-						complete: task.complete
-						percent: task.complete / task.fns.length * 100 .|. 0
-						start: start
-						end: end
-						duration: end - start
+				#debug "no handler (#{@state}).#{inputType}"
+				#if @emit.call(this, NO_HANDLER, obj) isnt false
+				@eventQueue.push obj
+			@currentActionArgs = void
+			return ret
+	transition: (newState) ~>
+		debug "transition %s -> %s", @state, newState
+		if not @inExitHandler and newState isnt @state
+			oldState = void
+			if @states[newState]
+				@targetReplayState = newState
+				@priorState = @state
+				@state = newState
+				if oldState = @priorState
+					if @states[oldState] and @states[oldState]._onExit
+						@inExitHandler = true
+						@states[oldState]._onExit.call this
+						@inExitHandler = false
+					@emit.call this, TRANSITION, {
+						fromState: oldState
+						toState: newState
 					}
-					if task.complete < task.fns.length then task.next!
-					else task.emit \end, null, task.results, name
-				if not is_choke and task.complete < task.fns.length then task.next!
-			@tasks[name] = task
-
-		promt: (name, q) ->
-			console.log "prompting..."
-			@emit 'prompt', name, q
-			@emit 'prompt:'+name, q
-		on: (eventName, real_cb, callback) ->
-			if typeof callback is \undefined then callback = real_cb
-			self = this
-			listeners = self.eventListeners[eventName]
-			self.eventListeners[eventName] = [] if not listeners
-			self.eventListeners[eventName] = [listeners] if typeof listeners is \function
-			self.eventListeners[eventName].push callback
-			return {
-				eventName: eventName
-				callback: callback
-				cb: real_cb
-				off: ->
-					#console.log "OFF", eventName, callback
-					self.off eventName, callback
+				if @states[newState]._onEnter then @states[newState]._onEnter.call this
+				if @targetReplayState is newState then @processQueue NEXT_TRANSITION
+				#@processQueue NEXT_TRANSITION
+				return
+			debug "attempted to transition to an invalid state: %s", newState
+			#TODO: when the state machine is virtualized, ask the user to add the state
+			@emit.call this, INVALID_STATE, {
+				@state
+				attemptedState: newState
 			}
-		once: (eventName, callback) ->
-			lala = @on eventName, callback, !->
-				lala.cb ...
-				process.nextTick ->
-					#console.log "evt.off", @eventListeners[eventName].length, lala.cb
-					lala.off!
-					#console.log "evt.off.done", @eventListeners[eventName].length, lala.cb
-		off: (eventName, callback) ->
-			if not eventName
-				@eventListeners = {}
+	processQueue: (type) ->
+		#console.log "processQueue", NEXT_TRANSITION, NEXT_HANDLER
+		filterFn = if type is NEXT_TRANSITION
+			(item) -> item.type is NEXT_TRANSITION and (not item.untilState or item.untilState is @state)
+		else
+			(item) -> item.type is NEXT_HANDLER
+		toProcess = _.filter @eventQueue, filterFn, this
+		@eventQueue = _.difference @eventQueue, toProcess
+		_.each toProcess, ((item) -> @exec.apply this, item.args), this
+	clearQueue: (type, name) ->
+		if not type
+			@eventQueue = []
+		else
+			filter = void
+			if type is NEXT_TRANSITION
+				filter = (evnt) -> evnt.type is NEXT_TRANSITION and if name then evnt.untilState is name else true
 			else
-				if @eventListeners[eventName]
-					if callback then
-						#@eventListeners[eventName] = _.without @eventListeners[eventName], callback
-						#console.log "callback", callback
-						if ~(i = @eventListeners[eventName].indexOf callback)
-							#console.log "cb", i, callback
-							@eventListeners[eventName].splice i, 1
-					else @eventListeners[eventName] = []
+				if type is NEXT_HANDLER then filter = (evnt) -> evnt.type is NEXT_HANDLER
+			@eventQueue = _.filter @eventQueue, filter
+	deferUntilTransition: (stateName) ->
+		if @currentActionArgs
+			queued = {
+				type: NEXT_TRANSITION
+				untilState: stateName
+				args: @currentActionArgs
+			}
+			@eventQueue.push queued
+			@emit.call this, DEFERRED, {
+				@state
+				queuedArgs: queued
+			}
+	deferUntilNextHandler: ->
+		if @currentActionArgs
+			queued = {
+				type: NEXT_TRANSITION
+				args: @currentActionArgs
+			}
+			@eventQueue.push queued
+			@emit.call this, DEFERRED, {
+				@state
+				queuedArgs: queued
+			}
+	task: (name, ...fns) ~>
+		debug "new task '%s'", name
+		self = this
+		task = new EventEmitter
+		task.name = name
+		task.i = 0
+		task.running = 0
+		task.complete = 0
+		task.concurrency = Infinity
+		task.results = []
+		task.chokes = []
+		task.fns = [] ++ fns.slice 0
+		task.branch = (name) ->
+			branch = self.task name
+			branch.parent = self
+			task.push (done) ->
+				branch.on \end ->
+					done ...
+			branch
+		task.choke = (fn) ->
+			debug "(%s): choke %d", name, @fns.length
+			@chokes.push @fns.length
+			@fns.push fn
+			task.done = false
+			if @i
+				@next!
+			task
+		task.add = (fn) ->
+			debug "(%s): push %d", name, @fns.length
+			i = @fns.length
+			#@fns.push fn
+			@fns.splice i, 0, fn
+			task.done = false
+			@next!
+			task
+		task.push = (fn) ->
+			debug "(%s): push %d", name, @fns.length
+			i = @fns.length
+			/*
+			_fn = fn
+			fn = (cb) ->
+				console.log i, "before"
+				_cb = cb
+				_fn ->
+					console.log i, "cb"
+					_cb ...
+				console.log i, "after"
+			*/
+			@fns.push fn
+			task.done = false
+			if i then @next!
+			task
+		task.end = (cb) ->
+			debug "(%s): end", name
+			task.once \end cb
+			process.nextTick ->
+				task.next!
+			task
+		task.next = ->
+			i = @i
+			fn = @fns[i]
+			is_choke = if ~@chokes.indexOf i then true else false
+			if typeof fn is \undefined or @running >= @concurrency
+				if typeof task.parent is \function then task.parent.next!
+				return # @onend null, @results, name
+			debug "(%s): running %d %s", name, i, is_choke
+			start = new Date
+			@i++
+			@running++
+			fn (err, res) ->
+				task.running--
+				if err
+					console.log "caught err", err.stack
+					task.done = true
+					task.emit \end, err
+				return if task.done
+				task.complete++
+				end = new Date
+				task.results[i] = res if res
+				debug "(%s): progress %d/%d (%d)", name, task.complete, task.fns.length, task.running
+				task.emit 'progress', {
+					index: i
+					value: res
+					pending: task.complete - task.fns.length
+					total: task.fns.length
+					complete: task.complete
+					percent: task.complete / task.fns.length * 100 .|. 0
+					start: start
+					end: end
+					duration: end - start
+				}
+				if task.complete < task.fns.length then task.next!
+				else task.emit \end, null, task.results, name
+			if not is_choke and task.complete < task.fns.length then task.next!
+		@tasks[name] = task
+
+	promt: (name, q) ->
+		console.log "prompting..."
+		@emit 'prompt', name, q
+		@emit 'prompt:'+name, q
+	on: (eventName, real_cb, callback) ->
+		if typeof callback is \undefined then callback = real_cb
+		self = this
+		listeners = self.eventListeners[eventName]
+		self.eventListeners[eventName] = [] if not listeners
+		self.eventListeners[eventName] = [listeners] if typeof listeners is \function
+		self.eventListeners[eventName].push callback
+		return {
+			eventName: eventName
+			callback: callback
+			cb: real_cb
+			off: ->
+				#console.log "OFF", eventName, callback
+				self.off eventName, callback
+		}
+	once: (eventName, callback) ->
+		lala = @on eventName, callback, !->
+			lala.cb ...
+			process.nextTick ->
+				#console.log "evt.off", @eventListeners[eventName].length, lala.cb
+				lala.off!
+				#console.log "evt.off.done", @eventListeners[eventName].length, lala.cb
+	off: (eventName, callback) ->
+		if not eventName
+			@eventListeners = {}
+		else
+			if @eventListeners[eventName]
+				if callback then
+					#@eventListeners[eventName] = _.without @eventListeners[eventName], callback
+					#console.log "callback", callback
+					if ~(i = @eventListeners[eventName].indexOf callback)
+						#console.log "cb", i, callback
+						@eventListeners[eventName].splice i, 1
+				else @eventListeners[eventName] = []
 
 	# we're done now... return
-	return new Fsm name, options
+	#return new Fsm name, options
 
 /*
 # testing

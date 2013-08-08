@@ -21,19 +21,14 @@ repository:
 	url: 'https://github.com/heavyk/MachineShop.git'
 bugs:
 	url: 'https://github.com/heavyk/MachineShop/issues'
-main: './lib/machineshop.js'
 dependencies:
 	semver: \x
 	request: \x
-	#fstream: \x
-	#'fstream-ignore': \x
 	tar: \x
-	#temp: \x
 	rimraf: \x
 	debug: \x
 	lodash: \x
 	mkdirp: \x
-	#fibers: \x
 	minimatch: \x
 	'es6-collections': \x
 	'node-proxy': \x
