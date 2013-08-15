@@ -195,6 +195,9 @@ export recursive_hardlink = (path, into, cb) ->
 		catch err then throw err
 		files
 
+
+
+
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
@@ -204,8 +207,8 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	#TODO: add file watching
 	#TODO: only add the event emitter if the `on` fn is called (also ignore events if no emitter)
 	debug = (require 'debug') 'config:'+path
-	#EventEmitter = require \events .EventEmitter
-	EventEmitter = require \eventemitter2 .EventEmitter2
+	EventEmitter = require \events .EventEmitter
+	#EventEmitter = require \eventemitter2 .EventEmitter2
 	WeakMap = global.WeakMap
 	Proxy = global.Proxy
 	Reflect = global.Reflect
@@ -257,20 +260,20 @@ export Config = (path, initial_obj, opts, save_fn) ->
 
 
 				debug "writing...", path
-				console.log "writing...", obj
-				console.log "writing...", JSON.stringify(_.cloneDeep(obj), null, '\t')
+
+				console.log stringify(obj)
+				#console.log "writing...", JASON.stringify(_.cloneDeep(obj), null, '\t')
 				Config._saving[path] = 0
-				writeFile path, JSON.stringify(obj, null, '\t'), (err) ->
+				writeFile path, stringify(obj), (err) ->
 					if typeof save_fn is \function => save_fn obj
-					ee.emit \save obj
+					ee.emit \save obj, path
 					unless Config._saving[path]
-						console.log "clearInterval"
 						clearInterval iid
-			), 100ms #, leading: true trailing: true
+			), 500ms #, leading: true trailing: true
 	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
 	make_reflective = (o, oon, scoped_ee) ->
 		oo = if Array.isArray o then [] else {}
-		unless scoped_ee then scoped_ee = new EventEmitter wildcard: true
+		unless scoped_ee then scoped_ee = new EventEmitter # wildcard: true
 		reflective = Reflect.Proxy oo, {
 			enumerable: true
 			enumerate: (obj) -> Object.keys oo
@@ -279,9 +282,13 @@ export Config = (path, initial_obj, opts, save_fn) ->
 			get: (obj, name) ->
 				#debug "(get-) #{oon}.%s:", name, oo[name]
 				if name is \toJSON then -> oo
-				#else if name is \inspect then -> JSON.stringify oo
 				else if name is \inspect then -> require 'util' .inspect oo
-				else if typeof(v = oo[name]) isnt \undefined then v
+				else if (v = oo[name]) is null and oo[name+'.js']
+					v = oo[name+'.js']
+					args = v.match /function \((.*)\)/
+					body = v.substring 1+v.indexOf('{'), v.lastIndexOf('}')
+					oo[name] = Function args.1, body
+				else if typeof v isnt \undefined then v
 				else scoped_ee[name]
 			set: (obj, name, val) ->
 				debug "(set) #{if oon then oon+'.'+name else name} -> %s", val
@@ -293,8 +300,8 @@ export Config = (path, initial_obj, opts, save_fn) ->
 					if name is \_all #or name is \name
 						scoped_ee[name] = val
 					else
-						console.log "set: %s -> %s", prop, val
-						if typeof val is \object
+						#console.log "set: %s -> %s", prop, val
+						if typeof val is \object and v isnt null
 							val = make_reflective val, prop
 							#if typeof o[name] isnt \object
 							#	oo[name] = {}
@@ -308,7 +315,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	Config._[path] = config = make_reflective {}, '', ee
 	if initial_obj then _.each initial_obj, (v, k) ->
 		if k isnt \_events
-			if typeof v is \object
+			if typeof v is \object and v isnt null
 				config[k] = make_reflective v, k, save
 			else
 				Config._[path][k] = v
@@ -317,27 +324,39 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		try
 			_config = JSON.parse data
 			_.each _config, (v, k) ->
-				if typeof v is \object
+				if typeof v is \object and v isnt null
 					config[k] = make_reflective v, k, save
 				else
 					Config._[path][k] = v
+			config.emit \ready, null, path
 		catch ex
-			#throw ex
-			mkdir Path.dirname path
+			mkdir Path.dirname(path), (err) ->
+				config.emit \ready, ex, path
 		debug "created Config object"
 		Config._saving[path] = false
-		config.emit \ready
-
-		/*
-		Object.defineProperty config, "_events", {
-			get: -> ee
-		}*/
-
-
-	config
+	return config
 Config._saving = {}
 Config._ = {}
-#Config.sync = (cb) ->
-#	for k, v of Config._saving
-#		if v
+
+export stringify = (obj, indent = 1) ->
+	out = []
+	iindent = '\t' * indent
+	k = Object.keys obj .sort!
+	for key in k
+		if (o = obj[key]) is null
+			out.push '"'+key+'": null'
+		else switch typeof o
+		| \function =>
+			out.push '"'+key+'": null'
+			o = o.toString!
+			key += '.js'
+			if typeof obj[key] is \undefined
+				out.push '"'+key+'": "'+o.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')+'"'
+		| \string =>
+			out.push '"'+key+'": "'+o.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')+'"'
+		| \number \boolean =>
+			out.push '"'+key+'": '+o
+		| \object =>
+			out.push '"'+key+'": '+stringify o, indent+1
+	return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{'\t' * (indent-1)}}"
 
