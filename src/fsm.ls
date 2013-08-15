@@ -153,6 +153,7 @@ export class Fsm
 				if @states[newState]._onEnter then @states[newState]._onEnter.call this
 				if @targetReplayState is newState then @processQueue NEXT_TRANSITION
 				#@processQueue NEXT_TRANSITION
+				@processQueue DEFERRED
 				return
 			debug "attempted to transition to an invalid state: %s", newState
 			#TODO: when the state machine is virtualized, ask the user to add the state
@@ -164,11 +165,16 @@ export class Fsm
 		#console.log "processQueue", NEXT_TRANSITION, NEXT_HANDLER
 		filterFn = if type is NEXT_TRANSITION
 			(item) -> item.type is NEXT_TRANSITION and (not item.untilState or item.untilState is @state)
+		else if type is DEFERRED
+			(item) -> item.type is DEFERRED and (not item.untilState or item.untilState is @state)
 		else
 			(item) -> item.type is NEXT_HANDLER
 		toProcess = _.filter @eventQueue, filterFn, this
 		@eventQueue = _.difference @eventQueue, toProcess
-		_.each toProcess, ((item) -> @exec.apply this, item.args), this
+		_.each toProcess, ((item) ->
+			fn = if item.type is DEFERRED => item.cb else @exec
+			fn.apply this, item.args
+		), this
 	clearQueue: (type, name) ->
 		if not type
 			@eventQueue = []
@@ -179,6 +185,18 @@ export class Fsm
 			else
 				if type is NEXT_HANDLER then filter = (evnt) -> evnt.type is NEXT_HANDLER
 			@eventQueue = _.filter @eventQueue, filter
+	until: (stateName, cb) ->
+		args = slice.call &, 2
+		if @state is stateName
+			cb.apply this, args
+		else
+			queued = {
+				type: DEFERRED
+				untilState: stateName
+				cb: cb
+				args: args
+			}
+			@eventQueue.push queued
 	deferUntilTransition: (stateName) ->
 		if @currentActionArgs
 			queued = {
