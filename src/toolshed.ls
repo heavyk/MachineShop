@@ -241,34 +241,16 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		Config._saving[path]++
 		if iid is false
 			iid := setInterval (->
-				#if Config._saving[path]
-				#	debug "#path already being saved... waiting 10ms before trying again"
-				#	# OPTIMIZE: in certain cases, maybe I could be saving twice...
-				#	return setTimeout save, 10ms
-				#Config._saving[path] = true
-				#obj = _.cloneDeep(config) #Config._[path]
 				obj = config #Config._[path]
-				#console.log "saving...", path
-				# used to test slow saves... 50ms delay
-				/*
-				future = new Future
-				setTimeout ->
-					future.return!
-				, 50ms
-				future.wait!
-				#*/
-
-
 				debug "writing...", path
 
-				console.log stringify(obj)
-				#console.log "writing...", JASON.stringify(_.cloneDeep(obj), null, '\t')
 				Config._saving[path] = 0
 				writeFile path, stringify(obj), (err) ->
 					if typeof save_fn is \function => save_fn obj
 					ee.emit \save obj, path
 					unless Config._saving[path]
 						clearInterval iid
+						iid := false
 			), 500ms #, leading: true trailing: true
 	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
 	make_reflective = (o, oon, scoped_ee) ->
@@ -330,8 +312,9 @@ export Config = (path, initial_obj, opts, save_fn) ->
 					Config._[path][k] = v
 			config.emit \ready, null, path
 		catch ex
-			mkdir Path.dirname(path), (err) ->
-				config.emit \ready, ex, path
+			#mkdir Path.dirname(path), (err) ->
+			#console.log "Exception:", path, ex.stack
+			config.emit \ready, ex, path
 		debug "created Config object"
 		Config._saving[path] = false
 	return config
