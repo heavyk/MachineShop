@@ -146,11 +146,12 @@ export class Fsm
 						@inExitHandler = true
 						@states[oldState]._onExit.call this
 						@inExitHandler = false
+				if @states[newState]._onEnter
+					@states[newState]._onEnter.call this
 					@emit.call this, TRANSITION, {
 						fromState: oldState
 						toState: newState
 					}
-				if @states[newState]._onEnter then @states[newState]._onEnter.call this
 				if @targetReplayState is newState then @processQueue NEXT_TRANSITION
 				#@processQueue NEXT_TRANSITION
 				@processQueue DEFERRED
