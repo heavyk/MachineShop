@@ -197,9 +197,6 @@ export recursive_hardlink = (path, into, cb) ->
 		catch err then throw err
 		files
 
-
-
-
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
@@ -210,7 +207,6 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	#TODO: only add the event emitter if the `on` fn is called (also ignore events if no emitter)
 	debug = (require 'debug') 'config:'+path
 	EventEmitter = require \events .EventEmitter
-	#EventEmitter = require \eventemitter2 .EventEmitter2
 	WeakMap = global.WeakMap
 	Proxy = global.Proxy
 	Reflect = global.Reflect
@@ -234,26 +230,23 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	else if typeof opts is \function
 		save_fn = opts
 		opts {+watch}
-	#else if typeof initial_obj is \object
-	#	_config = initial_obj <<< _config
 
-	#save = _.throttle (->
 	iid = false
 	save = ->
 		Config._saving[path]++
 		if iid is false
 			iid := setInterval (->
-				obj = config #Config._[path]
+				obj = config
 				debug "writing...", path
 
 				Config._saving[path] = 0
-				writeFile path, stringify(obj), (err) ->
+				writeFile path, stringify(obj, 1, stringify.get_desired_order(path)), (err) ->
 					if typeof save_fn is \function => save_fn obj
 					ee.emit \save obj, path
 					unless Config._saving[path]
 						clearInterval iid
 						iid := false
-			), 500ms #, leading: true trailing: true
+			), 500ms
 	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
 	make_reflective = (o, oon, scoped_ee) ->
 		oo = if Array.isArray o then [] else {}
@@ -275,25 +268,19 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				else if typeof v isnt \undefined then v
 				else scoped_ee[name]
 			set: (obj, name, val) ->
-				debug "(set) #{if oon then oon+'.'+name else name} -> %s", val
+				#debug "(set) #{if oon then oon+'.'+name else name} -> %s", val
 				if (typeof val is \object and !_.isEqual oo[name], val) or oo[name] isnt val
 					prop = if oon then "#{oon}.#{name}" else name
-					#console.log "emitting... %s", prop, val
-					#if config then config.emit prop, val
-					#scoped_ee.emit name, val
-					if name is \_all #or name is \name
+					if name is \_all
 						scoped_ee[name] = val
 					else
-						#console.log "set: %s -> %s", prop, val
 						if typeof val is \object and v isnt null
 							val = make_reflective val, prop
-							#if typeof o[name] isnt \object
-							#	oo[name] = {}
 						oo[name] = val
 						save!
 				return val
 		}
-		for k, v of o => reflective[k] = v # defineProperty??
+		for k, v of o => reflective[k] = v
 		return reflective
 	Config._saving[path] = true
 	Config._[path] = config = make_reflective {}, '', ee
@@ -314,19 +301,28 @@ export Config = (path, initial_obj, opts, save_fn) ->
 					Config._[path][k] = v
 			config.emit \ready, null, path
 		catch ex
-			#mkdir Path.dirname(path), (err) ->
-			#console.log "Exception:", path, ex.stack
+			#TODO: make sure that we can write to the desired path before emitting \ready event
 			config.emit \ready, ex, path
-		debug "created Config object"
 		Config._saving[path] = false
 	return config
 Config._saving = {}
 Config._ = {}
 
-export stringify = (obj, indent = 1) ->
+#TODO: if typeof obj is \object then this function, else use JSON.stringify
+export stringify = (obj, indent = 1, desired_order = []) ->
 	out = []
 	iindent = '\t' * indent
+
+	# sort our keys alphabetically
 	k = Object.keys obj .sort!
+	# then, desired order keys get plaed on top in reverse order
+	if (doi = desired_order.length-1) >= 0
+		do
+			if ~(i = k.indexOf desired_order[doi])
+				kk = k.splice i, 1
+				k.unshift kk.0
+		while --doi >= 0
+
 	for key in k
 		if (o = obj[key]) is null
 			out.push '"'+key+'": null'
@@ -348,3 +344,12 @@ export stringify = (obj, indent = 1) ->
 				out.push '"'+key+'": '+stringify o, indent+1
 	return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{'\t' * (indent-1)}}"
 
+stringify.get_desired_order = (path) ->
+	# TODO: add more cases for common config fles (bower, browserify, etc.)
+	# TODO: add higher-depth object ordering as well. ex:
+	# desired_order.subpaths.'sencillo' = <[universe creator]>
+	# desired_order.subpaths.'a.long.subpath' = <[a good ordering]>
+	switch Path.basename path
+	| \component.json \package.json =>
+		<[name version description homepage author contributors maintainers]>
+	| otherwise => []

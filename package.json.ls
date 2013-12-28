@@ -1,15 +1,17 @@
 # Machine Shop ToolShed!
 
 name: 'machineshop'
-version: '0.1.0'
+version: '0.1.1'
 description: 'gatta have the right tools for the right job, ya know?'
-keywords: [
-	'update'
-]
-homepage: 'https://github.com/heavyk/MachineShop'
 author: 'Kenneth Bentley <mechanicofthesequence@gmail.com>'
+homepage: 'https://github.com/heavyk/MachineShop'
 contributors: [
 	'Kenneth Bentley <mechanicofthesequence@gmail.com>'
+]
+keywords: [
+	"configurator"
+	"reflection"
+	"lala"
 ]
 maintainers: [
 	'Kenneth Bentley <mechanicofthesequence@gmail.com>'
