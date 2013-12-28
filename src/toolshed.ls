@@ -5,7 +5,7 @@ Url = require \url
 spawn = require('child_process').spawn
 _ = require \lodash
 mkdirp = require 'mkdirp'
-debug = (require 'debug') 'utils'
+debug = (require 'debug') 'ToolShed'
 
 export nw_version = process.versions.'node-webkit'
 export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0
@@ -13,7 +13,9 @@ export v8_mode = \Release
 
 # XXX - I REALLY want to integrate fiber support into sencillo
 #     - it should be transparent to the programmer whether it's a sync func or not
-
+# in the case of node-webkit or node-0.11.3+, it should use yield
+# in the case of node normal it should use fibers or gnode style of yield (whichever is faster)
+Fiber = ->
 
 scan = (str) ->
 	re = /(?:(\S*"[^"]+")|(\S*'[^']+')|(\S+))/g
@@ -340,6 +342,9 @@ export stringify = (obj, indent = 1) ->
 		| \number \boolean =>
 			out.push '"'+key+'": '+o
 		| \object =>
-			out.push '"'+key+'": '+stringify o, indent+1
+			if key is \keywords or typeof o.length is \number or Array.isArray o
+				out.push '"'+key+"\": [\n#{iindent}\t" + (_.map o, (vv) -> if typeof vv is \object then stringify vv, indent+1 else JSON.stringify vv).join(",\n\t#{iindent}") + "\n#{iindent}]"
+			else
+				out.push '"'+key+'": '+stringify o, indent+1
 	return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{'\t' * (indent-1)}}"
 

@@ -1,13 +1,7 @@
 _ = require 'lodash'
 EventEmitter = require \events .EventEmitter
 Debug = require \debug
-debug = Debug 'fsm'
-if process.versions.'node-webkit' or true
-	console.log "welcome to webkit Machina"
-	Fiber = ->
-else
-	Fiber = require \fibers
-	Future = require \fibers/future
+debug = Debug 'Fsm'
 
 # inspired by ifandelse'a machina.js
 #  https://github.com/ifandelse/machina.js
@@ -48,10 +42,6 @@ utils = {
 #   there will be problems using the 'off' function and the 'on' function can be optimized as well
 # TODO: add fsm logging capability (and show this log inside of verse)
 
-#export class Fsm
-#export Fsm = (name, options) ->
-
-
 export class Fsm
 	var debug
 	(name, options) ->
@@ -83,9 +73,7 @@ export class Fsm
 				args1 = slice.call args, 1
 				if typeof listeners is \function then listeners.apply this, args1
 				else _.each listeners, ((callback) -> callback.apply this, args1), this
-		if false and typeof Fiber isnt \undefined
-			Fiber(doEmit).run!
-		else doEmit!
+		doEmit!
 	emitSoon: -> a = &; process.nextTick ~> @emit.apply @, a
 	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
 	exec: (inputType) ~>
@@ -148,10 +136,10 @@ export class Fsm
 						@inExitHandler = false
 				if @states[newState]._onEnter
 					@states[newState]._onEnter.call this
-					@emit.call this, TRANSITION, {
-						fromState: oldState
-						toState: newState
-					}
+				@emit.call this, TRANSITION, {
+					fromState: oldState
+					toState: newState
+				}
 				if @targetReplayState is newState then @processQueue NEXT_TRANSITION
 				#@processQueue NEXT_TRANSITION
 				@processQueue DEFERRED
