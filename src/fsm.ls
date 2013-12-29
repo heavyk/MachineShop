@@ -209,8 +209,10 @@ export class Fsm
 				@state
 				queuedArgs: queued
 			}
-	task: (name, ...fns) ~>
+	task: (name) ~>
 		debug "new task '%s'", name
+		#OPTIMIZE: do we really need the 'self' variable? it's only used in the branch fn
+		#  once tests are implemented, we can check to be sure
 		self = this
 		task = new EventEmitter
 		task.name = name
@@ -219,45 +221,50 @@ export class Fsm
 		task.complete = 0
 		task.concurrency = Infinity
 		task.results = []
+		task.msgs = []
 		task.chokes = []
-		task.fns = [] ++ fns.slice 0
+		task.fns = []
 		task.branch = (name) ->
+			if typeof txt is \function
+				fn = txt
+				txt = null
 			branch = self.task name
 			branch.parent = self
 			task.push (done) ->
 				branch.on \end ->
 					done ...
 			branch
-		task.choke = (fn) ->
+		task.choke = (txt, fn) ->
+			if typeof txt is \function
+				fn = txt
+				txt = null
 			debug "(%s): choke %d", name, @fns.length
 			@chokes.push @fns.length
 			@fns.push fn
+			@msgs.push txt
 			task.done = false
 			if @i
 				@next!
 			task
-		task.add = (fn) ->
-			debug "(%s): push %d", name, @fns.length
+		task.add = (txt, fn) ->
+			if typeof txt is \function
+				fn = txt
+				txt = null
+			debug "(%s): add %d", name, @fns.length
 			i = @fns.length
-			#@fns.push fn
 			@fns.splice i, 0, fn
+			@msgs.splice i, 0, txt
 			task.done = false
 			@next!
 			task
-		task.push = (fn) ->
+		task.push = (txt, fn) ->
+			if typeof txt is \function
+				fn = txt
+				txt = null
 			debug "(%s): push %d", name, @fns.length
 			i = @fns.length
-			/*
-			_fn = fn
-			fn = (cb) ->
-				console.log i, "before"
-				_cb = cb
-				_fn ->
-					console.log i, "cb"
-					_cb ...
-				console.log i, "after"
-			*/
 			@fns.push fn
+			@msgs.push txt
 			task.done = false
 			if i then @next!
 			task
@@ -278,6 +285,7 @@ export class Fsm
 			start = new Date
 			@i++
 			@running++
+			@emit \running @msg = @msgs[i], i, @fns.length
 			fn (err, res) ->
 				task.running--
 				if err
@@ -289,12 +297,13 @@ export class Fsm
 				end = new Date
 				task.results[i] = res if res
 				debug "(%s): progress %d/%d (%d)", name, task.complete, task.fns.length, task.running
-				task.emit 'progress', {
+				task.emit \progress, {
 					index: i
 					value: res
 					pending: task.complete - task.fns.length
 					total: task.fns.length
 					complete: task.complete
+					msg: task.msg
 					percent: task.complete / task.fns.length * 100 .|. 0
 					start: start
 					end: end
