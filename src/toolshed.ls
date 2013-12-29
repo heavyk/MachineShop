@@ -9,6 +9,7 @@ debug = (require 'debug') 'ToolShed'
 
 export nw_version = process.versions.'node-webkit'
 export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0
+export HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
 export v8_mode = \Release
 
 # XXX - I REALLY want to integrate fiber support into sencillo
@@ -300,9 +301,14 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				#else
 					Config._[path][k] = v
 			config.emit \ready, null, path
-		catch ex
+		catch e
 			#TODO: make sure that we can write to the desired path before emitting \ready event
-			config.emit \ready, ex, path
+			if e.code is \ENOENT
+				config.emit \new
+			else
+				config.emit \error e
+		finally
+			config.emit \ready, config
 		Config._saving[path] = false
 	return config
 Config._saving = {}
