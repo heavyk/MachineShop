@@ -162,7 +162,6 @@ export exec = (cmd, opts, cb) ->
 	opts.stdio = \inherit unless opts.stdio
 	opts.env = process.env unless opts.env
 	cmds = cmd.split ' '
-	#console.log 'spawn', cmds.0, cmds.slice(1), opts
 	p = spawn cmds.0, cmds.slice(1), opts
 	p.on \close (code) ->
 		if code then cb new Error "exit code: "+code
@@ -213,7 +212,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	if typeof WeakMap is \undefined
 		WeakMap = global.WeakMap = require 'es6-collections' .WeakMap
 	if typeof Proxy is \undefined and not process.versions.'node-webkit' #global.window?navigator
-		console.log "!!!!!!! installing node-proxy cheat..."
+		debug "!!!!!!! installing node-proxy cheat..."
 		global.Proxy = Proxy = require 'node-proxy'
 	# reflection is the last thing required for dynamic objects
 	if typeof Reflect is \undefined
@@ -239,18 +238,21 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				obj = config
 				debug "writing...", path
 
-				Config._saving[path] = 0
-				writeFile path, stringify(obj, 1, stringify.get_desired_order(path)), (err) ->
+				json_str = if opts.ugly
+					JSON.stringify obj
+				else
+					stringify obj, 1, stringify.get_desired_order path
+				writeFile path, json_str, (err) ->
 					if typeof save_fn is \function => save_fn obj
 					ee.emit \save obj, path
 					unless Config._saving[path]
 						clearInterval iid
 						iid := false
+				Config._saving[path] = 0
 			), 500ms
 	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
-	make_reflective = (o, oon, scoped_ee) ->
+	make_reflective = (o, oon) ->
 		oo = if Array.isArray o then [] else {}
-		unless scoped_ee then scoped_ee = new EventEmitter # wildcard: true
 		reflective = Reflect.Proxy oo, {
 			enumerable: true
 			enumerate: (obj) -> Object.keys oo
@@ -266,18 +268,16 @@ export Config = (path, initial_obj, opts, save_fn) ->
 					body = v.substring 1+v.indexOf('{'), v.lastIndexOf('}')
 					oo[name] = Function args.1, body
 				else if typeof v isnt \undefined then v
-				else scoped_ee[name]
+				else if oon.length is 0 then ee[name]
 			set: (obj, name, val) ->
 				#debug "(set) #{if oon then oon+'.'+name else name} -> %s", val
 				if (typeof val is \object and !_.isEqual oo[name], val) or oo[name] isnt val
 					prop = if oon then "#{oon}.#{name}" else name
-					if name is \_all
-						scoped_ee[name] = val
-					else
-						if typeof val is \object and v isnt null
-							val = make_reflective val, prop
-						oo[name] = val
-						save!
+					if typeof val is \object and v isnt null
+						val = make_reflective val, prop
+					oo[name] = val
+					ee.emit \set, prop, val
+					save!
 				return val
 		}
 		for k, v of o => reflective[k] = v
@@ -295,9 +295,9 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		try
 			_config = JSON.parse data
 			_.each _config, (v, k) ->
-				if typeof v is \object and v isnt null
-					config[k] = make_reflective v, k, save
-				else
+				#if typeof v is \object and v isnt null
+				#	config[k] = make_reflective v, k, save
+				#else
 					Config._[path][k] = v
 			config.emit \ready, null, path
 		catch ex
@@ -340,6 +340,8 @@ export stringify = (obj, indent = 1, desired_order = []) ->
 		| \object =>
 			if key is \keywords or typeof o.length is \number or Array.isArray o
 				out.push '"'+key+"\": [\n#{iindent}\t" + (_.map o, (vv) -> if typeof vv is \object then stringify vv, indent+1 else JSON.stringify vv).join(",\n\t#{iindent}") + "\n#{iindent}]"
+			else if o is null
+				out.push '"'+key+'": null'
 			else
 				out.push '"'+key+'": '+stringify o, indent+1
 	return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{'\t' * (indent-1)}}"
