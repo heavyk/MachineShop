@@ -77,7 +77,7 @@ export class Fsm
 	emitSoon: -> a = &; process.nextTick ~> @emit.apply @, a
 	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
 	exec: (inputType) ~>
-		debug "handle: %s", inputType
+		debug "exec: %s::%s", @state, inputType
 		if not @inExitHandler
 			states = @states
 			current = @state
@@ -87,7 +87,7 @@ export class Fsm
 			catchAll = void
 			ret = void
 			@currentActionArgs = args
-			if states[current][inputType] or states[current].'*' or @.'*'
+			if current and (states[current][inputType] or states[current].'*' or @.'*')
 				handlerName = if states[current][inputType] then inputType else '*'
 				catchAll = handlerName is '*'
 				if states[current][handlerName]

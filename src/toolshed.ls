@@ -296,7 +296,6 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				Config._[path][k] = v
 
 	Fs.readFile path, 'utf-8', (err, data) ->
-		debug "path %s contents:", path, data, err
 		is_new = false
 		if err
 			if err.code is \ENOENT
@@ -309,9 +308,10 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				_config = JSON.parse data
 				_.each _config, (v, k) ->
 					Config._[path][k] = v
-				config.emit \ready, config, path
 			catch e
 				config.emit \error e
+			finally
+				config.emit \ready, config, path
 		#TODO: make sure that we can write to the desired path before emitting \ready event
 		config.emit \ready, config, is_new
 		Config._saving[path] = false
