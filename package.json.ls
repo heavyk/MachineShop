@@ -1,8 +1,8 @@
 # Machine Shop ToolShed!
 
 name: 'machineshop'
-version: '0.1.1'
-description: 'gatta have the right tools for the right job, ya know?'
+version: '0.2.1'
+description: 'gatta have the right tools for the right job'
 author: 'Kenneth Bentley <mechanicofthesequence@gmail.com>'
 homepage: 'https://github.com/heavyk/MachineShop'
 contributors: [

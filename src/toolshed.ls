@@ -173,7 +173,6 @@ export searchDownwardFor = (file, dir, cb) ->
 	if typeof dir is \function
 		cb = dir
 		dir = process.cwd!
-
 	test_dir = (dir) ->
 		path = Path.join dir, file
 		debug "testing %s", path

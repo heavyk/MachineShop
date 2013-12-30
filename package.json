@@ -1,7 +1,7 @@
 {
 	"name": "machineshop",
-	"version": "0.1.1",
-	"description": "gatta have the right tools for the right job, ya know?",
+	"version": "0.2.0",
+	"description": "gatta have the right tools for the right job",
 	"homepage": "https://github.com/heavyk/MachineShop",
 	"author": "Kenneth Bentley <mechanicofthesequence@gmail.com>",
 	"contributors": [
