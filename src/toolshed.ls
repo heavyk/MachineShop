@@ -169,6 +169,25 @@ export exec = (cmd, opts, cb) ->
 		if code then cb new Error "exit code: "+code
 		else cb code
 
+export searchDownwardFor = (file, dir, cb) ->
+	if typeof dir is \function
+		cb = dir
+		dir = process.cwd!
+
+	test_dir = (dir) ->
+		path = Path.join dir, file
+		debug "testing %s", path
+		Fs.stat path, (err, st) ->
+			if err
+				if err.code is \ENOENT
+					dir := Path.resolve dir, '..'
+					if dir is Path.sep
+						cb err
+					else test_dir dir
+			else if st.isFile!
+				cb null, path
+	test_dir dir
+
 export recursive_hardlink = (path, into, cb) ->
 	debug "recursive_hardlink %s -> %s", path, into, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	rh = (done) ->
