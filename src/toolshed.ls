@@ -132,8 +132,9 @@ export readdir = (path, cb) ->
 export readFile = (path, enc, cb) ->
 	debug "readFile %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	#TODO: add in support for extra parameters
-	#if typeof enc is \function
-	#	cb = enc
+	if typeof enc is \function
+		cb = enc
+		enc = 'utf-8'
 	if typeof cb is \function
 		Fs.readFile path, enc, cb
 	else if Fiber.current
@@ -229,7 +230,9 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		save_fn = initial_obj
 	else if typeof opts is \function
 		save_fn = opts
-		opts {+watch}
+		opts = {+watch}
+	if typeof opts is \undefined
+		opts = {+watch}
 
 	iid = false
 	save = ->
@@ -293,22 +296,24 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				Config._[path][k] = v
 
 	Fs.readFile path, 'utf-8', (err, data) ->
-		try
-			_config = JSON.parse data
-			_.each _config, (v, k) ->
-				#if typeof v is \object and v isnt null
-				#	config[k] = make_reflective v, k, save
-				#else
-					Config._[path][k] = v
-			config.emit \ready, null, path
-		catch e
-			#TODO: make sure that we can write to the desired path before emitting \ready event
-			if e.code is \ENOENT
+		debug "path %s contents:", path, data, err
+		is_new = false
+		if err
+			if err.code is \ENOENT
 				config.emit \new
+				is_new = true
 			else
 				config.emit \error e
-		finally
-			config.emit \ready, config
+		else
+			try
+				_config = JSON.parse data
+				_.each _config, (v, k) ->
+					Config._[path][k] = v
+				config.emit \ready, config, path
+			catch e
+				config.emit \error e
+		#TODO: make sure that we can write to the desired path before emitting \ready event
+		config.emit \ready, config, is_new
 		Config._saving[path] = false
 	return config
 Config._saving = {}
