@@ -2,15 +2,37 @@
 Fs = require \fs
 Path = require \path
 Url = require \url
-spawn = require('child_process').spawn
-_ = require \lodash
+spawn = require 'child_process' .spawn
+export _ = require \lodash
 mkdirp = require 'mkdirp'
-debug = (require 'debug') 'ToolShed'
+printf = require 'printf'
+
 
 export nw_version = process.versions.'node-webkit'
-export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0
+export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules
 export HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
 export v8_mode = \Release
+
+#TODO: implement DEBUG env variable
+export Debug = (prefix) ->
+	#TODO: make this a verse/fsm which maintains the list of debugs
+	unless path = Debug.prefixes[prefix]
+		path = process.cwd!
+
+	#path = Path.join path, 'debug.log'
+	path = Path.join HOME_DIR, '.verse', 'debug.log'
+
+	debug = !->
+		msg = printf ...
+		Fs.appendFileSync path, "#{prefix}: #msg\n"
+	
+	Fs.writeFileSync path, ""
+	debug "starting..."
+	return debug
+Debug.prefixes = {}
+#TODO: implement colors
+Debug.colors = true
+debug = Debug 'ToolShed'
 
 # XXX - I REALLY want to integrate fiber support into sencillo
 #     - it should be transparent to the programmer whether it's a sync func or not
@@ -185,6 +207,7 @@ export searchDownwardFor = (file, dir, cb) ->
 					else test_dir dir
 			else if st.isFile!
 				cb null, path
+			else console.log "....", st
 	test_dir dir
 
 export recursive_hardlink = (path, into, cb) ->
@@ -216,6 +239,8 @@ export recursive_hardlink = (path, into, cb) ->
 		catch err then throw err
 		files
 
+export EventEmitter = require \events .EventEmitter
+
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
@@ -224,8 +249,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	#TODO: add global path
 	#TODO: add file watching
 	#TODO: only add the event emitter if the `on` fn is called (also ignore events if no emitter)
-	debug = (require 'debug') 'config:'+path
-	EventEmitter = require \events .EventEmitter
+	debug = Debug 'config:'+path
 	WeakMap = global.WeakMap
 	Proxy = global.Proxy
 	Reflect = global.Reflect
@@ -239,7 +263,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		require 'harmony-reflect'
 		Reflect = global.Reflect
 	ee = new EventEmitter
-	var config
+	var config, written_json_str
 
 	if typeof initial_obj is \function
 		# we're just gonna assume, that the last argument is a function.
@@ -254,22 +278,23 @@ export Config = (path, initial_obj, opts, save_fn) ->
 
 	iid = false
 	save = ->
+		clear_interval = ->
+			unless Config._saving[path]
+				clearInterval iid
+				iid := false
 		Config._saving[path]++
 		if iid is false
 			iid := setInterval (->
 				obj = config
-				debug "writing...", path
-
-				json_str = if opts.ugly
-					JSON.stringify obj
-				else
-					stringify obj, 1, stringify.get_desired_order path
-				writeFile path, json_str, (err) ->
-					if typeof save_fn is \function => save_fn obj
-					ee.emit \save obj, path
-					unless Config._saving[path]
-						clearInterval iid
-						iid := false
+				json_str = if opts.ugly then JSON.stringify obj else stringify obj, 1, stringify.get_desired_order path
+				if json_str isnt written_json_str
+					debug "writing...", path
+					writeFile path, json_str, (err) ->
+						written_json_str := json_str
+						if typeof save_fn is \function => save_fn obj
+						ee.emit \save obj, path, json_str
+						clear_interval!
+				else clear_interval!
 				Config._saving[path] = 0
 			), 500ms
 	#IMPROVEMENT: if !watch, then just load the config and don't make it reflective
@@ -293,12 +318,13 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				else if oon.length is 0 then ee[name]
 			set: (obj, name, val) ->
 				#debug "(set) #{if oon then oon+'.'+name else name} -> %s", val
+				prev_val = oo[name]
 				if (typeof val is \object and !_.isEqual oo[name], val) or oo[name] isnt val
 					prop = if oon then "#{oon}.#{name}" else name
 					if typeof val is \object and v isnt null
 						val = make_reflective val, prop
 					oo[name] = val
-					ee.emit \set, prop, val
+					ee.emit \set, prop, val, prev_val
 					save!
 				return val
 		}
@@ -324,14 +350,19 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		else
 			try
 				_config = JSON.parse data
+				written_json_str := data
 				_.each _config, (v, k) ->
 					Config._[path][k] = v
 			catch e
 				config.emit \error e
-			finally
-				config.emit \ready, config, path
 		#TODO: make sure that we can write to the desired path before emitting \ready event
-		config.emit \ready, config, is_new
+		if data
+			config.emit \ready, config, data
+		else
+			save!
+			config.once \save ->
+				debug "saved data ready"
+				config.emit \ready, config, data
 		Config._saving[path] = false
 	return config
 Config._saving = {}
@@ -384,3 +415,4 @@ stringify.get_desired_order = (path) ->
 	| \component.json \package.json =>
 		<[name version description homepage author contributors maintainers]>
 	| otherwise => []
+
