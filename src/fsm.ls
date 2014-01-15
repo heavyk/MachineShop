@@ -79,7 +79,17 @@ export class Fsm
 		if @muteEvents then return
 		args = &
 		doEmit = ~>
-			@debug "emit: (%s%s)", eventName, if typeof args.1 is \object => ','+args.1.type else ''
+			switch eventName
+			| HANDLING =>
+				@debug "executing: (%s:%s)", @state, args.1.type
+			| HANDLED =>
+				@debug "executed: (%s:%s)", @state, args.1.type
+			| INVALID_STATE =>
+				@debug "bad transition: (%s !-> %s)", args.1.state, args.1.attemptedState
+			| TRANSITION =>
+				@debug "transition: (%s -> %s)", args.1.fromState, args.1.toState
+			| otherwise =>
+				@debug "emit: (%s): %s", eventName, JSON.stringify args.1
 			if listeners = @eventListeners.'*'
 				if typeof listeners is \function then listeners.apply this, args
 				else _.each @eventListeners.'*', ((callback) -> callback.apply this, args), this
@@ -91,7 +101,7 @@ export class Fsm
 	emitSoon: -> a = &; process.nextTick ~> @emit.apply @, a
 	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
 	exec: (cmd) ~>
-		@debug "exec: %s::%s", @state, cmd
+		@debug "exec: (%s:%s)", @state, cmd
 		if not @inExitHandler
 			states = @states
 			current = @state
@@ -239,9 +249,6 @@ export class Fsm
 		task.chokes = []
 		task.fns = []
 		task.branch = (name) ->
-			if typeof txt is \function
-				fn = txt
-				txt = null
 			branch = self.task name
 			branch.parent = self
 			task.push (done) ->
@@ -252,7 +259,7 @@ export class Fsm
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "(%s): choke %d", name, @fns.length
+			self.debug "task(%s): choke %d", name, @fns.length
 			@chokes.push @fns.length
 			@fns.push fn
 			@msgs.push txt
@@ -264,7 +271,7 @@ export class Fsm
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "(%s): add %d", name, @fns.length
+			self.debug "task(%s): add %d", name, @fns.length
 			i = @fns.length
 			@fns.splice i, 0, fn
 			@msgs.splice i, 0, txt
@@ -275,7 +282,7 @@ export class Fsm
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "(%s): push %d", name, @fns.length
+			self.debug "task(%s): push %d", name, @fns.length
 			i = @fns.length
 			@fns.push fn
 			@msgs.push txt
@@ -283,7 +290,7 @@ export class Fsm
 			if i then @next!
 			task
 		task.end = (cb) ->
-			self.debug "(%s): end", name
+			self.debug "task(%s): end", name
 			task.cb = cb
 			#task.once \end cb
 			#process.nextTick ->
@@ -295,12 +302,12 @@ export class Fsm
 			if typeof fn is \undefined or @running >= @concurrency
 				if typeof task.parent is \function then task.parent.next!
 				return # @onend null, @results, name
-			self.debug "(%s): running %d %s", name, i, is_choke
+			self.debug "task(%s): running %d %s", name, i, is_choke
 			start = new Date
 			@i++
 			@running++
 
-			self.debug "(%s): running %d/%d (%s)", name, i, task.fns.length, task.msgs[i]
+			self.debug "task(%s): running %d/%d (%s)", name, i, task.fns.length, task.msgs[i]
 			@emit \running {
 				msg: task.msgs[i]
 				index: i
@@ -321,7 +328,7 @@ export class Fsm
 				task.complete++
 				end = new Date
 				task.results[i] = res if res
-				self.debug "(%s): complete %d/%d (running: %d)", name, task.complete, task.fns.length, task.running
+				self.debug "task(%s): complete %d/%d (running: %d)", name, task.complete, task.fns.length, task.running
 				task.emit \complete, {
 					index: i
 					value: res

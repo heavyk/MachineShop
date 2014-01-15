@@ -6,6 +6,7 @@ spawn = require 'child_process' .spawn
 export _ = require \lodash
 mkdirp = require 'mkdirp'
 printf = require 'printf'
+export EventEmitter = require \events .EventEmitter
 
 
 export nw_version = process.versions.'node-webkit'
@@ -26,8 +27,9 @@ export Debug = (prefix) ->
 		msg = printf ...
 		Fs.appendFileSync path, "#{prefix}: #msg\n"
 	
-	Fs.writeFileSync path, ""
-	debug "starting..."
+	mkdirp Path.dirname(path), (err) ->
+		Fs.writeFileSync path, ""
+		debug "starting..."
 	return debug
 Debug.prefixes = {}
 #TODO: implement colors
@@ -39,6 +41,8 @@ debug = Debug 'ToolShed'
 # in the case of node-webkit or node-0.11.3+, it should use yield
 # in the case of node normal it should use fibers or gnode style of yield (whichever is faster)
 Fiber = ->
+export Future = ->
+	#TODO: use yield funcs to simulate a future (a la fibers...)
 
 scan = (str) ->
 	re = /(?:(\S*"[^"]+")|(\S*'[^']+')|(\S+))/g
@@ -239,8 +243,6 @@ export recursive_hardlink = (path, into, cb) ->
 		catch err then throw err
 		files
 
-export EventEmitter = require \events .EventEmitter
-
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
@@ -254,7 +256,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	Proxy = global.Proxy
 	Reflect = global.Reflect
 	if typeof WeakMap is \undefined
-		WeakMap = global.WeakMap = require 'es6-collections' .WeakMap
+		global.WeakMap = WeakMap = require 'es6-collections' .WeakMap
 	if typeof Proxy is \undefined and not process.versions.'node-webkit' #global.window?navigator
 		debug "!!!!!!! installing node-proxy cheat..."
 		global.Proxy = Proxy = require 'node-proxy'
@@ -333,11 +335,10 @@ export Config = (path, initial_obj, opts, save_fn) ->
 	Config._saving[path] = true
 	Config._[path] = config = make_reflective {}, '', ee
 	if initial_obj then _.each initial_obj, (v, k) ->
-		if k isnt \_events
-			if typeof v is \object and v isnt null
-				config[k] = make_reflective v, k, save
-			else
-				Config._[path][k] = v
+		if typeof v is \object and v isnt null
+			config[k] = make_reflective v, k, save
+		else
+			Config._[path][k] = v
 
 	Fs.readFile path, 'utf-8', (err, data) ->
 		is_new = false
