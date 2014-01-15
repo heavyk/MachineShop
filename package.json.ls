@@ -1,7 +1,8 @@
+#!/usr/bin/env lsc -cj
 # Machine Shop ToolShed!
 
-name: 'machineshop'
-version: '0.2.1'
+name: 'MachineShop'
+version: '0.2.2'
 description: 'gatta have the right tools for the right job'
 author: 'Kenneth Bentley <mechanicofthesequence@gmail.com>'
 homepage: 'https://github.com/heavyk/MachineShop'
@@ -17,7 +18,7 @@ maintainers: [
 	'Kenneth Bentley <mechanicofthesequence@gmail.com>'
 ]
 engines:
-	node: '>0.8.3'
+	node: '>=0.8.3'
 repository:
 	type: 'git'
 	url: 'https://github.com/heavyk/MachineShop.git'

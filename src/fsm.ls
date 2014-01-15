@@ -48,8 +48,6 @@ utils = {
 # TODO: add fsm logging capability (and show this log inside of verse)
 
 export class Fsm
-	debug = ~>
-		console.log @namespace
 	(name, options) ->
 		if typeof name is \string
 			name += '.fsm'

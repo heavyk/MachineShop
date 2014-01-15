@@ -1,6 +1,6 @@
 {
-	"name": "machineshop",
-	"version": "0.2.0",
+	"name": "MachineShop",
+	"version": "0.2.2",
 	"description": "gatta have the right tools for the right job",
 	"homepage": "https://github.com/heavyk/MachineShop",
 	"author": "Kenneth Bentley <mechanicofthesequence@gmail.com>",
@@ -32,7 +32,7 @@
 		"src": "src"
 	},
 	"engines": {
-		"node": ">0.8.3"
+		"node": ">=0.8.3"
 	},
 	"keywords": [
 		"configurator",

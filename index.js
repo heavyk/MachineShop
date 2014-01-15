@@ -8,5 +8,6 @@ try {
   out$.ToolShed = ToolShed = require('./lib/toolshed');
   out$.Fsm = Fsm = require('./lib/fsm').Fsm;
 }
+out$.Config = Config = ToolShed.Config;
 out$._ = _ = require('lodash');
 out$.Debug = Debug = require('debug');
