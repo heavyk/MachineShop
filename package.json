@@ -14,17 +14,15 @@
 		"url": "https://github.com/heavyk/MachineShop/issues"
 	},
 	"dependencies": {
-		"debug": "x",
-		"es6-collections": "x",
-		"harmony-reflect": "x",
-		"lodash": "x",
-		"minimatch": "x",
-		"mkdirp": "x",
-		"node-proxy": "x",
-		"request": "x",
-		"rimraf": "x",
-		"semver": "x",
-		"tar": "x"
+		"debug": "^0.8.0",
+		"es6-collections": "^0.2.0",
+		"eventemitter3": "^0.1.2",
+		"harmony-reflect": "0.0.13",
+		"lodash": "^2.4.1",
+		"mkdirp": "^0.3.5",
+		"node-proxy": "^0.8.0",
+		"printf": "^0.2.0",
+		"rimraf": "^2.2.6"
 	},
 	"directories": {
 		"example": "examples",
@@ -45,8 +43,8 @@
 	},
 	"sencillo": {
 		"creator": {
-			"email": "mechanicofthesequence@gmail.com",
-			"name": "heavyk"
+			"name": "heavyk",
+			"email": "mechanicofthesequence@gmail.com"
 		},
 		"universe": "facilmente"
 	}

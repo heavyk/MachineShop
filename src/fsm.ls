@@ -1,3 +1,4 @@
+require! \assert
 #_ = require 'lodash'
 #EventEmitter = require \events .EventEmitter
 # { _, EventEmitter } = require '..'
@@ -15,30 +16,58 @@ debug = Debug 'Fsm'
 
 
 slice = [].slice
-NEXT_TRANSITION = 'transition'
-NEXT_HANDLER = 'handler'
-HANDLING = 'handling'
-HANDLED = 'handled'
-NO_HANDLER = 'nohandler'
-TRANSITION = 'transition'
-INVALID_STATE = 'invalidstate'
-DEFERRED = 'deferred'
-NEW_FSM = 'newfsm'
-utils = {
-	makeFsmNamespace: (->
-		machinaCount = 0
-		-> 'fsm.' + machinaCount++
-	)!
-	getDefaultOptions: (name) ->
-		{
-			initialState: 'uninitialized'
-			eventListeners: {'*': []}
-			muteEvents: false
-			states: {}
-			eventQueue: []
-			namespace: name
-		}
-}
+# TODO: we can really do this better... I'm sure. make this a part of Machina
+
+makeFsmNamespace: (->
+	machinaCount = 0
+	-> 'fsm.' + machinaCount++
+)!
+
+# later, this will become a blueprint for multi-client use
+# the name of this is a reference to a gift I received as a child from a girl named Jenny
+# TODO: require the blueprint directly
+Fabuloso =
+	derivitave: (name, version) ->
+		if version then Semver.version version, @_derivitaves[name]
+		else @_derivitaves[name]
+	derivitaves:
+		'node-webkit': (cb) ->
+			cb if typeof process is \object and typeof process.versions is \object then process.versions.'node-webkit' else void
+		node: (cb) ->
+			cb if typeof process is \object and typeof process.versions is \object then process.versions.node else void
+		browser: (cb) ->
+			cb if typeof window.navigator is \object then window.navigator.version else void
+		# TODO: move this over to PublicDB
+		# TODO: move over the jive localarchive stuff to publicdb
+		# arango: (cb) ->
+		# 	#TODO: get the config values from somewhere
+		# 	return cb!
+		# 	db = arango.Connection
+		# 	db.admin.version false, (err, res) ->
+		# 		console.log "arango", &
+		# 		if err then cb 1
+		# 		else if typeof cb is \function then cb res.version
+	'extend.initialize': ->
+		task = @task 'check derivitaves'
+		#for k, d of @derivitaves
+		if typeof @_derivitaves is \undefined
+			@_derivitaves = {}
+		_.each @derivitaves, (d, k) ->
+			task.push "checking for #k" (done) ->
+				self = @
+				d (v) ->
+					if v
+						self._derivitaves[k] = v
+						self.debug "found derivitave #k@#v"
+					done void, v
+
+		task.end ->
+			# re-emit this to make sure to apply the derivitaves in the uninitialized state
+			# debugger
+			@debug "re-emit #{@initialState}"
+			@emit \transition, toState: @initialState
+
+
 
 # https://github.com/ifandelse/machina.js
 # v0.3.2
@@ -48,161 +77,226 @@ utils = {
 # TODO: add fsm logging capability (and show this log inside of verse)
 
 export class Fsm
+	total_deferred = 0
 	(name, options) ->
 		if typeof name is \string
-			name += '.fsm'
+			name += '.fsm.'+Math.random!toString 32 .substr 2
 		else
 			options = name
-			name = utils.makeFsmNamespace!
+			name = makeFsmNamespace!
 		@debug = Debug name
-		_.extend @, options
-		_.defaults @, utils.getDefaultOptions name
-		@initialize.apply @, [options] if @initialize
-		#machina.emit NEW_FSM, @
-		@transitionSoon @initialState if @initialState
+		@debug "new Fsm!"
+		if _machina
+			_machina.emit \new:Fsm, @
+
+		# init objects here... they can't be a part of the prototype...
+		@tasks = {}
+		if typeof options is \object
+			ToolShed.extend @, options
+		unless @eventListeners
+			@eventListeners = {}
+		unless @eventQueue
+			@eventQueue = []
+		unless @states
+			console.log "@", @
+			throw new Error "really, a stateless state machine???"
+			@states = {}
+		unless @namespace
+			@namespace = name
+		if typeof @initialState is \undefined
+			@initialState = 'uninitialized'
+
+		# console.log "states:", @states, options?states, options
+
+		# process.nextTick ~>
+		switch typeof @initialize
+		| \function =>
+			@initialize.call @, options
+		| \object =>
+			if Array.isArray @initialize
+				for fn in @initialize
+					if typeof fn is \function
+						fn.call @, options
+			else
+				for key, fn of @initialize
+					if typeof fn is \function
+						fn.call @, options
+
+		#machina.emit \new:Fsm, @
+		@debug "fsm state #{@state}"
+		if not @state
+			@transition @initialState
 
 	#initialize: ->
 	# make getter / setter?
+	# eventListeners: {}
+	muteEvents: false
+	# states: {}
+	# eventQueue: []
 	concurrency: Infinity
-	tasks: {}
-	#debug: -> debug ...
+	# tasks: {}
+	_initialized: false
+	once_initialized: (cb) ~>
+		assert this instanceof Fsm
+		@debug "once_initialized... %s", @_initialized
+		if typeof cb is \function
+			if @_initialized
+				cb.call @
+			else
+				# @deferUntilNextHandler cb
+				@eventQueue.push {
+					type: \deferred
+					notState: @initialState
+					cb: cb
+				}
+		@_initialized
+	reset: ~>
+		@state = void
+		@initialize.call @ if typeof @initialize is \function
+		#machina.emit NEW_FSM, @
+		@transitionSoon @initialState if @initialState
 	error: (err) ~>
 		states = @states
-		if estate = states[@state]._onError
-			@states[@state]._onError.call this
+		if estate = states[@state].onerror
+			@states[@state].onerror.call @
 		else
 			# commit to the debug log
 			console.error err.stack or (err+'')
-	emit: (eventName) ~>
-		if @muteEvents then return
-		args = &
-		doEmit = ~>
-			switch eventName
-			| HANDLING =>
-				@debug "executing: (%s:%s)", @state, args.1.type
-			| HANDLED =>
-				@debug "executed: (%s:%s)", @state, args.1.type
-			| INVALID_STATE =>
-				@debug "bad transition: (%s !-> %s)", args.1.state, args.1.attemptedState
-			| TRANSITION =>
-				@debug "transition: (%s -> %s)", args.1.fromState, args.1.toState
-			| otherwise =>
-				@debug "emit: (%s): %s", eventName, JSON.stringify args.1
-			if listeners = @eventListeners.'*'
-				if typeof listeners is \function then listeners.apply this, args
-				else _.each @eventListeners.'*', ((callback) -> callback.apply this, args), this
-			if listeners = @eventListeners[eventName]
-				args1 = slice.call args, 1
-				if typeof listeners is \function then listeners.apply this, args1
-				else _.each listeners, ((callback) -> callback.apply this, args1), this
-		doEmit!
-	emitSoon: -> a = &; process.nextTick ~> @emit.apply @, a
-	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
 	exec: (cmd) ~>
 		@debug "exec: (%s:%s)", @state, cmd
 		if not @inExitHandler
 			states = @states
-			current = @state
+			state = @state
 			args = slice.call &, 0
+			args1 = args.slice 1
 			handlerName = void
 			handler = void
 			catchAll = void
 			ret = void
 			@currentActionArgs = args
-			if current and (states[current][cmd] or states[current].'*' or @.'*')
-				handlerName = if states[current][cmd] then cmd else '*'
-				catchAll = handlerName is '*'
-				if states[current][handlerName]
-					handler = states[current][handlerName]
-					@_currentAction = current + '.' + handlerName
+			if state and (states[state][cmd] or states[state].'*' or @'*') or @cmds and typeof (handler = @cmds[cmd]) is \function
+				if state and (handlerName = if states[state][cmd] then cmd else '*') and handler = states[state][handlerName]
+					@_currentAction = state + '.' + handlerName
+				else if @cmds and typeof (handler = @cmds[cmd]) is \function
+					# TODO: this is pretty unoptimized. go ahead and improve this. you will notice that above, I'm already saving the handler
+					@_currentAction = handlerName = cmd
+					# neither am I 100 % sure why I'm saving the _currentAction ... I never use it
 				else
-					handler = @.'*'
+					handler = @'*'
 					@_currentAction = '*'
-				@emit.call this, HANDLING, {
+				@emit.call @, \executing, {
 					type: cmd
-					args: args.slice 1
+					args: args1
 				}
+				# TODO: check if this works and/or is faster:
+				# @debug.optimize "chech to see if calling toString directly is faster than a concat with '' ... see below:"
+				#if (handler+'') is '[object String]'
 				if (Object::toString.call handler) is '[object String]'
+					@debug "exec bullshit:transition (%s)", handler
+					@debug.todo "I think this is loke a forwarder... look into it and make sure. lala: mycmd: 'lala.lala' should transition to 'lala.lalai or it should call lala: lala: -> console.log 'hello world'"
+					@debug.todo "wait, this might mean that an exec that is lala: lala: 'mmm' -> transition \\mmm"
 					@transition handler
-				else ret = handler.apply this, if catchAll then args else args.slice 1
-				@emit.call this, HANDLED, {
+				else
+					ret = handler.apply @, if handlerName is \* then args else args1
+					@debug "exec called:ret (%s)", ret
+				@emit.call @, \executed, {
 					type: cmd
-					args: args.slice 1
+					args: args1
+					ret: ret
 				}
 				@_priorAction = @_currentAction
 				@_currentAction = ''
-				@processQueue NEXT_HANDLER
+				@processQueue \next-exec
 			else
 				@debug "exec: next transition"
 				obj = {
-					type: NEXT_TRANSITION
+					type: \next-transition
 					cmd: cmd
-					args: args.slice 0
+					args: args.slice 0 # why are we slicing here?
 				}
-				#@debug "no handler (#{@state}).#{cmd}"
-				#if @emit.call(this, NO_HANDLER, obj) isnt false
 				@eventQueue.push obj
 			@currentActionArgs = void
 			return ret
-	transition: (newState) ~>
-		@debug "transition %s -> %s", @state, newState
+	execSoon: ~> a = &; process.nextTick ~> @exec.apply @, a
+	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
+	transition: (newState) ->
+		if typeof newState isnt \string
+			newState = newState+''
+		if @inTransition
+			return @transitionSoon ...
+		@debug "fsm: transition %s -> %s", @state, newState
 		if not @inExitHandler and newState isnt @state
 			oldState = void
+			args1 = slice.call(&, 1)
 			if @states[newState]
+				@inTransition = newState
 				@targetReplayState = newState
 				@priorState = @state
 				@state = newState
 				if oldState = @priorState
-					if @states[oldState] and @states[oldState]._onExit
+					if @states[oldState] and @states[oldState].onexit
 						@inExitHandler = true
-						@states[oldState]._onExit.call this
+						@states[oldState].onexit.apply @, args1
 						@inExitHandler = false
-				if @states[newState]._onEnter
-					@states[newState]._onEnter.call this
-				@emit.call this, TRANSITION, {
+				# process.nextTick ~>
+				if @states[newState].onenter
+					@states[newState].onenter.apply @, args1
+				# if @targetReplayState is newState then @processQueue \next-transition
+				if oldState is @initialState and not @_initialized
+					@debug "%s initialzed! in %s", @namespace, newState
+					@_initialized = true
+
+				@debug "fsm: post-transition %s -> %s", oldState, newState
+				@emit.apply @, ["state:#newState"] ++ args1
+				@emit.call @, \transition, {
 					fromState: oldState
 					toState: newState
+					args: args = args1
 				}
-				if @targetReplayState is newState then @processQueue NEXT_TRANSITION
-				@processQueue NEXT_TRANSITION
-				@processQueue DEFERRED
-				return
-			@debug "attempted to transition to an invalid state: %s", newState
-			#TODO: when the state machine is virtualized, ask the user to add the state
-			@emit.call this, INVALID_STATE, {
-				@state
-				attemptedState: newState
-			}
-	processQueue: (type) ->
-		filterFn = if type is NEXT_TRANSITION
-			(item) -> item.type is NEXT_TRANSITION and typeof @states[@state][item.cmd] isnt \undefined
-		else if type is DEFERRED
-			(item) -> item.type is DEFERRED and (item.untilState and item.untilState is @state)
+				@processQueue.call this, \next-transition
+				@processQueue.call this, \deferred
+				@inTransition = null
+			else
+				@debug "attempted to transition to an invalid state: %s", newState
+				#TODO: when the state machine is virtualized, ask the user to add the state
+				@emit.call @, \invalid-state, {
+					@state
+					attemptedState: newState
+					args: args1
+				}
+	processQueue: (type) !->
+		filterFn = if type is \next-transition
+			(item) ~> item.type is \next-transition and typeof @states[@state][item.cmd] isnt \undefined
+		else if type is \deferred
+			(item, i) ~> item.type is \deferred and ((item.untilState and item.untilState is @state) or (item.notState and item.notState isnt @state))
 		else
-			(item) -> item.type is NEXT_HANDLER
-		toProcess = _.filter @eventQueue, filterFn, this
-		@eventQueue = _.difference @eventQueue, toProcess
-		_.each toProcess, ((item) ->
-			fn = if item.type is DEFERRED => item.cb else @exec
-			fn.apply this, item.args
-		), this
+			(item) ~> item.type is \next-exec
+		len_before = @eventQueue.length
+		toProcess = _.filter @eventQueue, filterFn
+
+		_.each toProcess, !(item) ~>
+			if filterFn item, i
+				fn = if item.type is \deferred => item.cb else @exec
+				fn.apply @, item.args
+				i = @eventQueue.indexOf item
+				@eventQueue.splice i, 1
 	clearQueue: (type, name) ->
 		if not type
 			@eventQueue = []
 		else
 			filter = void
-			if type is NEXT_TRANSITION
-				filter = (evnt) -> evnt.type is NEXT_TRANSITION and if name then evnt.untilState is name else true
+			if type is \next-transition
+				filter = (evnt) ~> evnt.type is \next-transition and if name then evnt.untilState is name else true
 			else
-				if type is NEXT_HANDLER then filter = (evnt) -> evnt.type is NEXT_HANDLER
+				if type is \next-exec then filter = (evnt) ~> evnt.type is \next-exec
 			@eventQueue = _.filter @eventQueue, filter
 	until: (stateName, cb) ->
 		args = slice.call &, 2
 		if @state is stateName
-			cb.apply this, args
+			cb.apply @, args
 		else
 			queued = {
-				type: DEFERRED
+				type: \deferred
 				untilState: stateName
 				cb: cb
 				args: args
@@ -211,27 +305,27 @@ export class Fsm
 	deferUntilTransition: (stateName) ->
 		if @currentActionArgs
 			queued = {
-				type: NEXT_TRANSITION
+				type: \next-transition
 				untilState: stateName
 				args: @currentActionArgs
 			}
 			@eventQueue.push queued
-			@emit.call this, DEFERRED, {
+			@emit.call @, \deferred, {
 				@state
 				queuedArgs: queued
 			}
 	deferUntilNextHandler: ->
 		if @currentActionArgs
 			queued = {
-				type: NEXT_TRANSITION
+				type: \next-transition
 				args: @currentActionArgs
 			}
 			@eventQueue.push queued
-			@emit.call this, DEFERRED, {
+			@emit.call @, \deferred, {
 				@state
 				queuedArgs: queued
 			}
-	task: (name) ~>
+	task: (name) ->
 		@debug "new task '%s'", name
 		#OPTIMIZE: do we really need the 'self' variable? it's only used in the branch fn
 		#  once tests are implemented, we can check to be sure
@@ -249,64 +343,71 @@ export class Fsm
 		task.branch = (name) ->
 			branch = self.task name
 			branch.parent = self
-			task.push (done) ->
-				branch.on \end ->
-					done ...
 			branch
 		task.choke = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "task(%s): choke %d", name, @fns.length
-			@chokes.push @fns.length
-			@fns.push fn
-			@msgs.push txt
+			self.debug "task(%s): choke %d", name, task.fns.length
+			task.chokes.push task.fns.length
+			task.fns.push fn
+			task.msgs.push txt
 			task.done = false
-			if @i
-				@next!
+			if task.i
+				task.next!
 			task
 		task.add = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "task(%s): add %d", name, @fns.length
-			i = @fns.length
-			@fns.splice i, 0, fn
-			@msgs.splice i, 0, txt
+			# self.debug "task(%s): add %d", name, task.fns.length
+			i = task.fns.length
+			task.fns.splice i, 0, fn
+			task.msgs.splice i, 0, txt
 			task.done = false
-			@next!
+			task.next!
 			task
 		task.push = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			self.debug "task(%s): push %d", name, @fns.length
-			i = @fns.length
-			@fns.push fn
-			@msgs.push txt
+			# self.debug "task(%s): push %d: %s", name, task.fns.length, txt
+			i = task.fns.length
+			task.fns.push fn
+			task.msgs.push txt
 			task.done = false
-			if i then @next!
+			if task.i isnt 0
+				task.next!
 			task
 		task.end = (cb) ->
 			self.debug "task(%s): end", name
 			task.cb = cb
-			#task.once \end cb
 			#process.nextTick ->
-			return task.next!
+			if task.fns.length
+				# console.log "task: starting #{name} #{task.fns.length}"
+				return task.next!
+			else
+				# console.log "task: nothing to do... #{name} #{task.fns.length}", cb
+				task.done = true
+				# self.inExitHandler = false
+				return cb.call self, null, task.results, name
 		task.next = ->
-			i = @i
-			fn = @fns[i]
-			is_choke = if ~@chokes.indexOf i then true else false
-			if typeof fn is \undefined or @running >= @concurrency
+			# self.inExitHandler = true
+			# console.log "next..."
+			i = task.i
+			fn = task.fns[i]
+			is_choke = if ~task.chokes.indexOf i then true else false
+			if typeof fn is \undefined or task.running >= task.concurrency or (is_choke and task.running isnt 0)
 				if typeof task.parent is \function then task.parent.next!
-				return # @onend null, @results, name
-			self.debug "task(%s): running %d %s", name, i, is_choke
+				self.debug "task(%s): waiting \#%d (running:%s/%s) choke:%s - %s", name, i, task.running, task.concurrency, is_choke, typeof fn
+				return
+			# self.debug "task(%s): running %d %s", name, i, is_choke
 			start = new Date
-			@i++
-			@running++
+			task.i++
+			task.running++
 
-			self.debug "task(%s): running %d/%d (%s)", name, i, task.fns.length, task.msgs[i]
-			@emit \running {
+			self.debug "task(%s): running... \#%s (complete:%d/%d) (%s)", name, i, task.complete, task.fns.length, task.msgs[i]
+			task.emit \running {
 				msg: task.msgs[i]
 				index: i
 				running: task.running
@@ -322,11 +423,10 @@ export class Fsm
 						task.cb.call self, err
 					task.emit \error, err
 					return
-				#return if task.done
 				task.complete++
 				end = new Date
 				task.results[i] = res if res
-				self.debug "task(%s): complete %d/%d (running: %d)", name, task.complete, task.fns.length, task.running
+				self.debug "task(%s): done \#%s (complete:%d/%d running:%d) (%s)", name, i, task.complete, task.fns.length, task.running, task.msgs[i]
 				task.emit \complete, {
 					index: i
 					value: res
@@ -339,38 +439,87 @@ export class Fsm
 					end: end
 					duration: end - start
 				}
-				if task.complete < task.fns.length
+				# self.debug "task(%s): deciding... %d/%d `%s`", name, task.complete, task.fns.length, typeof task.cb
+				if (task.running + task.complete) < task.fns.length
 					process.nextTick -> task.next!
-				else if typeof task.cb is \function
-					task.cb.call self, null, task.results, name
+				else if task.running is 0
+					if typeof task.cb is \function
+						self.debug "task(%s): completed all tasks %d/%d", name, task.complete, task.fns.length
+						# console.log "task: #{task.name} completed all tasks..."
+						task.cb.call self, null, task.results, name
 					task.emit \end, null, task.results, name
+					delete self.tasks[name]
 			#catch e
-			if not is_choke and task.complete < task.fns.length then task.next!
+			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
+		task.emit \task:new task
+		if @tasks[name]
+			throw new Error "task already exists"
 		return @tasks[name] = task
 
-	promt: (name, q) ->
-		console.log "prompting..."
-		@emit 'prompt', name, q
-		@emit 'prompt:'+name, q
-	on: (eventName, real_cb, callback) ->
-		if typeof callback is \undefined then callback = real_cb
-		self = this
-		listeners = self.eventListeners[eventName]
-		self.eventListeners[eventName] = [] if not listeners
-		self.eventListeners[eventName] = [listeners] if typeof listeners is \function
-		self.eventListeners[eventName].push callback
+	# promt: (name, q) ->
+	# 	@emit 'prompt', name, q
+	# 	@emit 'prompt:'+name, q
+	emitSoon: ~> a = &; process.nextTick ~> @emit.apply @, a
+	emit: (eventName) ~>
+		if @muteEvents then return
+		args = &
+		doEmit = ~>
+			switch eventName
+			| \executing =>
+				@debug "executing: (%s:%s)", @state, args.1?type
+			| \executed =>
+				@debug "executed: (%s:%s)", @state, args.1?type
+			| \invalid-state =>
+				@debug.error "bad transition: (%s !-> %s)", args.1.state, args.1.attemptedState
+			| \transition =>
+				@debug "transition: (%s -> %s)", args.1.fromState, args.1.toState
+			| otherwise =>
+				@debug "emit: (%s): num args %s", eventName, args.length - 1
+			if listeners = @eventListeners.'*'
+				if typeof listeners is \function then listeners.apply @, args
+				else _.each @eventListeners.'*', ((callback) -> callback.apply @, args), @
+			if listeners = @eventListeners[eventName]
+				args1 = slice.call args, 1
+				if typeof listeners is \function then listeners.apply @, args1
+				else
+					# console.log "listeners", listeners.length
+					_.each listeners, (callback) ~> callback.apply @, args1
+		doEmit.call @
+		return @
+	on: (eventName, real_cb, callback) ~>
+		if typeof callback isnt \function
+			callback = real_cb
+			real_cb = void
+		listeners = @eventListeners[eventName]
+		# this is a hackedy hack to make sure we're not modifying the prototype
+		if @eventListeners is @__proto__.eventListeners
+			@eventListeners = _.cloneDeep @eventListeners
+		@eventListeners[eventName] = [] if not listeners
+		@eventListeners[eventName] = [listeners] if typeof listeners is \function
+		@eventListeners[eventName].push callback
+		if eventName.substr(0, 6) is "state:" and @state is eventName.substr 6
+			process.nextTick ~>
+				callback.call @
+		# if listeners and listeners.length > 20
+		# 	throw new Error "...."
+		# if eventName is \new:SrcDir
+		# 	console.log "listen to new Src!!", listeners and listeners.length
+		# 	try
+		# 		throw new Error "!@\#$ new:Src:" + listeners and listeners.length
+		# 	catch e
+		# 		console.log "this:", this
+		# 		console.log "error: ", e.stack
 		return {
 			eventName: eventName
 			callback: callback
 			cb: real_cb
-			off: ->
-				self.off eventName, callback
+			off: ~> @off eventName, callback
 		}
-	once: (eventName, callback) ->
-		evt = @on eventName, callback, !->
+	once: (eventName, callback) ~>
+		evt = @on eventName, callback, !~>
 			evt.cb ...
-			process.nextTick ->
-				evt.off!
+			process.nextTick ~>
+				evt.off eventName, callback
 	off: (eventName, callback) ->
 		if not eventName
 			@eventListeners = {}
@@ -384,12 +533,42 @@ export class Fsm
 	# we're done now... return
 	#return new Fsm name, options
 
+# later, in the future, integrate this with [node] webworker threads
+# to allow for multiple threads, duh
+class Machina extends Fsm
+	fsms: []
+	(name) ->
+		console.log "yay! we are a new Machina"
+		super "Machina"
+		ToolShed.extend @, Fabuloso
+
+	eventListeners:
+		newfsm: (fsm) ->
+			@fsms.push fsm
+
+	states:
+		uninitialized:
+			onenter: ->
+				@transition \ready
+
+		ready:
+			onenter: ->
+				@debug "machina ready!"
+
+
+_machina = new Machina
+Object.defineProperty exports, "Machina",
+	get: ->
+		if not _machina
+			_machina := new Machina
+		return _machina
+
 /*
 #TODO: convert this into a real test...
 fsm = new Fsm {
 	states:
 		uninitialized:
-			_onEnter: ->
+			onenter: ->
 				console.log "uninitialized"
 				task = @task 'lala1'
 				task.choke (done) ->
@@ -464,7 +643,7 @@ fsm = new Fsm {
 fsm = new Fsm {
 	states:
 		uninitialized:
-			_onEnter: ->
+			onenter: ->
 				console.log "uninitialized"
 				task = @task 'lala2'
 				task.push (done) -> done null, 1
@@ -473,3 +652,6 @@ fsm = new Fsm {
 
 }
 #*/
+
+export Fabuloso
+export Fsm

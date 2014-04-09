@@ -2,36 +2,93 @@
 Fs = require \fs
 Path = require \path
 Url = require \url
-spawn = require 'child_process' .spawn
+assert = require \assert
+spawn = require \child_process .spawn
+mkdirp = require \mkdirp
+Rimraf = require \rimraf
+printf = require \printf
+export EventEmitter = require \eventemitter3 .EventEmitter
+
+# later this will be split into current / da_funk .. but for now use lodash
+# export _ = require \Current
 export _ = require \lodash
-mkdirp = require 'mkdirp'
-printf = require 'printf'
-export EventEmitter = require \events .EventEmitter
-
-
-export nw_version = process.versions.'node-webkit'
-export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules
+export nw_version = if process.versions => process.versions.'node-webkit' else void
+export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + if process.versions => process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules else if typeof window is \object => \browser else \unknown
 export HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
 export v8_mode = \Release
 
+# maybe have a look at this:
+# https://github.com/bjouhier/galaxy
+# I want all functions to be called sync style
+# needs to feel something like co
+# https://github.com/jmar777/suspend
+
 #TODO: implement DEBUG env variable
-export Debug = (prefix) ->
+export Debug = (namespace) ->
 	#TODO: make this a verse/fsm which maintains the list of debugs
-	unless path = Debug.prefixes[prefix]
+	unless path = Debug.namespaces[namespace]
 		path = process.cwd!
 
-	#path = Path.join path, 'debug.log'
-	path = Path.join HOME_DIR, '.verse', 'debug.log'
+	if HOME_DIR
+		#path = Path.join path, 'debug.log'
+		debug = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[DEBUG] #{namespace}: #msg\n"
+		debug.warn = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[WARN] #{namespace}: #msg\n"
+		debug.info = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[INFO] #{namespace}: #msg\n"
+		debug.todo = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[TODO] #{namespace}: #msg\n"
+		debug.error = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[ERROR] #{namespace}: #msg\n"
+		debug.log = !->
+			msg = printf ...
+			Fs.appendFileSync path, "[LOG] #{namespace}: #msg\n"
+		start = ->
+			# path := Path.join HOME_DIR, '.ToolShed', "#{namespace}-debug.log"
+			path := Path.join HOME_DIR, '.ToolShed', "debug.log"
+			mkdirp Path.dirname(path), (err) ->
+				Fs.writeFileSync path, ""
+				debug "starting..."
 
-	debug = !->
-		msg = printf ...
-		Fs.appendFileSync path, "#{prefix}: #msg\n"
-	
-	mkdirp Path.dirname(path), (err) ->
-		Fs.writeFileSync path, ""
-		debug "starting..."
+		debug.namespace = ~
+			-> namespace
+			(v) ->
+				start!
+				namespace := v
+		debug.assert = assert
+
+		start!
+	else
+		debug = !->
+			msg = printf ...
+			console.debug "#{namespace}: #msg"
+		debug.todo = !->
+			msg = printf ...
+			console.info "#{namespace}: [TODO] #msg"
+		debug.warn = !->
+			msg = printf ...
+			console.warn "#{namespace}: #msg"
+		debug.info = !->
+			msg = printf ...
+			console.info "#{namespace}: #msg"
+		debug.error = !->
+			msg = printf ...
+			console.error "#{namespace}: #msg"
+		debug.log = !->
+			msg = printf ...
+			console.log "#{namespace}: #msg"
+		debug.assert = assert
+		debug.namespace = ~
+			-> namespace
+			(v) -> namespace := v
 	return debug
-Debug.prefixes = {}
+Debug.namespaces = {}
 #TODO: implement colors
 Debug.colors = true
 debug = Debug 'ToolShed'
@@ -78,6 +135,13 @@ export parse = (str) ->
 				argv: []
 			}
 	cmds
+
+export rimraf = (dir, cb) ->
+	if typeof cb is \function
+		Rimraf dir, cb
+	else
+		# fixme
+		Rimraf dir, ->
 
 export isDirectory = (path) ->
 	debug "isDirectory %s", path
@@ -294,7 +358,7 @@ export Scope = (scope_name, initial_obj, save_fn) ->
 				#debug "(get-) #{oon}.%s:", name, oo[name]
 				if name is \toJSON then -> oo
 				else if name is \inspect then -> require 'util' .inspect oo
-				else if (v = oo[name]) is null and oo[name+'.js']
+				else if (v = oo[name]) is 8 and oo[name+'.js']
 					v = oo[name+'.js']
 					args = v.match /function \((.*)\)/
 					body = v.substring 1+v.indexOf('{'), v.lastIndexOf('}')
@@ -426,13 +490,29 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		if iid is false
 			iid := setInterval (->
 				obj = config
-				json_str = if opts.ugly then JSON.stringify obj else stringify obj, 1, stringify.get_desired_order path
+				json_str = if opts.ugly
+					JSON.stringify obj
+				else
+					stringify obj, stringify.get_desired_order path
 				if json_str isnt written_json_str
+					console.log "writing...", path
 					debug "writing...", path
 					writeFile path, json_str, (err) ->
-						written_json_str := json_str
-						if typeof save_fn is \function => save_fn obj
-						ee.emit \save obj, path, json_str
+						# console.log "writeFile", err
+						if err
+							if err.code is \ENOENT
+								dirname = Path.dirname path
+								console.log "WE HAVE NOENT.. creating", Path.dirname path
+								mkdirp dirname, (err) ->
+									if err
+										ee.emit \error, err
+									else save!
+							else
+								ee.emit \error, err
+						else
+							written_json_str := json_str
+							if typeof save_fn is \function => save_fn obj
+							ee.emit \save obj, path, json_str
 						clear_interval!
 				else clear_interval!
 				Config._saving[path] = 0
@@ -472,11 +552,12 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		return reflective
 	Config._saving[path] = true
 	Config._[path] = config = make_reflective {}, '', ee
-	if initial_obj then _.each initial_obj, (v, k) ->
-		if typeof v is \object and v isnt null
-			config[k] = make_reflective v, k, save
-		else
-			Config._[path][k] = v
+	# if initial_obj then _.each initial_obj, (v, k) ->
+	# 	console.log "each k: '#k' v:", v
+	# 	if typeof v is \object and v isnt null
+	# 		config[k] = make_reflective v, k, save
+	# 	else
+	# 		Config._[path][k] = v
 
 	Fs.readFile path, 'utf-8', (err, data) ->
 		is_new = false
@@ -495,10 +576,12 @@ export Config = (path, initial_obj, opts, save_fn) ->
 			catch e
 				config.emit \error e
 		#TODO: make sure that we can write to the desired path before emitting \ready event
+		if initial_obj
+			merge config, initial_obj
 		if data
 			config.emit \ready, config, data
-		else
-			save!
+		else if Config._saving[path]
+			# save!
 			config.once \save ->
 				debug "saved data ready"
 				config.emit \ready, config, data
@@ -508,9 +591,25 @@ Config._saving = {}
 Config._ = {}
 
 #TODO: if typeof obj is \object then this function, else use JSON.stringify
-export stringify = (obj, indent = 1, desired_order = []) ->
+regex_slash = new RegExp '\\\\', \g
+regex_quote = new RegExp '"', \g
+regex_newline = new RegExp '\n', \g
+regex_tab = new RegExp '\t', \g
+regex_tabspace = new RegExp '\t  ', \g
+regex_space = new RegExp ' ', \g
+regex_newspace = for i to 10 => new RegExp '\n'+(' '*i), 'g'
+regex_newline = regex_newspace.0
+_iindent = for i to 4 => '\t' * i # preload up to 4 indent levels
+clean_str = (str) ->
+	"use strict"
+	(str+'').replace regex_slash, '\\\\' .replace regex_quote, '\\"' .replace regex_newline, '\\n' .replace regex_tab, '\\t'
+
+export stringify = (obj, desired_order = [], indent = 1) ->
 	out = []
-	iindent = '\t' * indent
+	# technically, this should scale up perfectly, so there should be no holes in the array
+	# assert i > 0
+	unless iindent = _iindent[indent]
+		iindent = _iindent[indent] = '\t' * indent
 
 	# sort our keys alphabetically
 	k = Object.keys obj .sort!
@@ -522,28 +621,238 @@ export stringify = (obj, indent = 1, desired_order = []) ->
 				k.unshift kk.0
 		while --doi >= 0
 
-	for key in k
-		if (o = obj[key]) is null
-			out.push '"'+key+'": null'
-		else switch typeof o
-		| \function =>
-			out.push '"'+key+'": null'
-			o = o.toString!
-			key += '.js'
-			if typeof obj[key] is \undefined
-				out.push '"'+key+'": "'+o.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')+'"'
-		| \string =>
-			out.push '"'+key+'": "'+o.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')+'"'
-		| \number \boolean =>
-			out.push '"'+key+'": '+o
-		| \object =>
-			if key is \keywords or typeof o.length is \number or Array.isArray o
-				out.push '"'+key+"\": [\n#{iindent}\t" + (_.map o, (vv) -> if typeof vv is \object then stringify vv, indent+1 else JSON.stringify vv).join(",\n\t#{iindent}") + "\n#{iindent}]"
-			else if o is null
+	if k.length
+		for key in k
+			if (o = obj[key]) is null
 				out.push '"'+key+'": null'
-			else
-				out.push '"'+key+'": '+stringify o, indent+1
-	return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{'\t' * (indent-1)}}"
+			else switch typeof o
+			| \function =>
+				out.push '"'+key+'": 8'
+				o = o.toString!
+				key += '.js'
+				if typeof obj[key] is \undefined
+					fn = o.toString!
+					i = fn.indexOf '('
+					ii = fn.indexOf ')'
+					j = fn.indexOf '{'
+					jj = fn.lastIndexOf '}'
+					args = fn.substring(++i, ii).replace(regex_space, '')
+					body = fn.substring(++j, jj).trim!
+					# console.log "#k:args:", args
+					# console.log "#k:body:", body
+					# console.log "#k:orig:", fn
+					if ~(i = fn.indexOf '\n')
+						ii = i + 1
+						while fn[ii] is ' ' => ii++
+						unless regex_newspace[iii = ii - i + 1 - 2]
+							regex_newspace[iii] = new RegExp '\n'+(' '*iii), 'g'
+						body = body.replace regex_newspace[ii - i + 1 - 2], '\n\t'
+						do
+							len = body.length
+							body = body.replace regex_tabspace, '\t\t' # _iindent[2]
+						while body.length isnt len
+
+					#TODO: if ugly, go ahead and uglify this
+					body = '\\n\\t'+clean_str(body)+'\\n' if body.length
+					out.push '"'+key+'": "function('+args+'){'+body+'}"'
+			| \string =>
+				out.push '"'+key+'": "'+clean_str(o)+'"'
+			| \number \boolean =>
+				out.push '"'+key+'": '+o
+			| \object =>
+				if typeof o.length is \number or Array.isArray o
+					if o.length
+						out.push '"'+key+"\": [\n#{iindent}\t" + (_.map o, (vv) -> if typeof vv is \object then stringify vv, desired_order, indent+1 else JSON.stringify vv).join(",\n\t#{iindent}") + "\n#{iindent}]"
+					else
+						out.push '"'+key+'": []'
+				else if o is null
+					out.push '"'+key+'": null'
+				else
+					out.push '"'+key+'": '+stringify o, desired_order, indent+1
+		return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{_iindent[indent-1]}}#{if indent is 1 => '\n' else ''}"
+	else if indent is 1 then "{}\n" else "{}"
+
+da_funk_scopes = []
+da_funk_callthrough = []
+empty_scope = {}
+da_funk_callthrough.i = 0
+
+export da_funk = (obj, scope, refs) ->
+	return {} if typeof obj isnt \object
+	refs = if typeof refs isnt \object => {} else _.cloneDeep refs
+	# unless refs.name
+	# 	debugger
+	basename = refs.name or ''
+	if typeof refs.__i is \undefined
+		refs.__i = 0
+	# else if refs.__i++ > (refs.deep || 10)
+	# 	throw new Error "too deep"
+	# 	return
+
+	if typeof scope isnt \object or not scope
+		scope = {} #empty_scope
+	# console.error "da_funk", scope
+
+	f = new Function """
+		if(this !== window && (typeof global !== 'object' || this !== global)) {
+			for (var i in this){
+				eval('var '+i+' = this[i];');
+			}
+		}
+		return function(name, refs, args, body) {
+			var fn = new Function(args, body);
+			var self = this;
+			var f = function() {
+				// try {
+					//console.log("this:", this, "self:", self)
+					return fn.apply(this, arguments);
+				/* } catch(e) {
+					var s = (e.stack+'').split('\\n')
+					//var i = 1;
+					var fn_s = fn.toString().split('\\n');
+					var line = /\\:([0-9]+)\\:([0-9]+)\\)$/.exec(s[1])[1] * 1;
+					var sp = "          ".substr(2, (fn_s.length+'').length);
+					var block = []
+					fn_s.map(function(s, i) {
+						i++;
+						//console.log(i, line, line < (i+3), line, '<', (i+3), line > (i-3), line, '>', (i-3))
+						if(line < (i+3) && line > (i-3)) block.push((i++)+":"+sp+s)
+					}).join('\\n')
+					console.error(s[0]+"\\n("+refs.name+" line: "+line+")\\n"+block.join('\\n'))
+					//debugger;
+					//console.error("Exception occured in "+name, e.stack, fn)
+					//throw e;
+				} */
+			}
+			//f.toString = function() {
+			//	return "\\ncustom_func: "+name+"\\nargs: "+args+"\\nbody: "+body;
+			//}
+			return f
+		}
+		"""
+	callthrough = f.call scope
+	#_.each obj, (v, k) ->
+	da_funk_scopes.push obj
+	for k in (keys = Object.keys obj)
+		v = obj[k]
+		# I choose 8 because it's unlikely that an unintended value will be of value '8'
+		# it takes up only one byte, and it looks like infinaty
+		# it could be any number though...
+		if v is 8 and typeof (fn = obj[k+'.js']) is \string
+			i = fn.indexOf '('
+			ii = fn.indexOf ')'
+			j = fn.indexOf '{'
+			jj = fn.lastIndexOf '}'
+			args = fn.substring(++i, ii).replace(regex_space, '')
+			# body = fn.substring(++j, jj).trim!
+			refs.name = basename+'.'+k
+			# console.log ":args:", args
+			# console.log ":body:", body
+			# console.log ":orig:", fn
+			# console.log "'#body'"
+			body = '"use strict"\n"' + basename + '"\n' + fn.substring(++j, jj).trim!
+			# console.log "callthrough:", refs.name, callthrough, da_funk_callthrough
+			obj[k] = callthrough(k, refs, args, body, new Function(args, body))
+
+			# delete obj[k+'.js']
+		# else if _.isObject v
+		else if v and typeof v is \object and v isnt obj and refs.__i <= (refs.deep || 4) and v.__proto__ is ({}).__proto__
+			refs.name = basename+'.'+k
+			# console.log "k:", k, obj[k], v.__proto__ is Object
+			refs.__i++
+			da_funk obj[k], scope, refs
+			refs.__i--
+	obj
+
+export objectify = (str, scope, refs) ->
+	return {} unless str
+	# refs = {} if typeof refs isnt \object
+	if str.0 is '/' or str.0 is '.'
+		str = ToolShed.readFile str
+
+	da_funk if typeof str is \string => JSON.parse str else str, scope, refs
+
+
+export merge = (a, b) ->
+	keys = _.union Object.keys(a), Object.keys(b)
+	for k in keys
+		if b.hasOwnProperty k# and k.0 isnt '_'
+			v = b[k]
+			c = a[k]
+
+			a[k] = \
+			if _.isArray c
+				if _.isArray v
+					_.union v, c
+				else if typeof v isnt \undefined
+					c ++ v
+				else c
+			else if _.isObject(v) and _.isObject(c)
+				merge c, v
+			else if typeof c is \undefined => v
+			else c
+	return a
+
+export extend = (a, b) ->
+	# c = {}
+	# keys = _.union Object.keys(a), Object.keys(b)
+	if typeof b is \object
+		keys = Object.keys(b)
+		for k in keys
+			if b.hasOwnProperty k and k.0 isnt '_'
+				_k = k
+				if (k.indexOf 'extend.') is 0
+					_b = b[k]
+					k = k.substr "extend.".length
+					_a = a[k]
+
+					# if typeof b[_k] is \function
+
+					# if not isArray = Array.isArray _a._fnArray
+					# 	_a._fnArray = []
+					# debugger
+				else
+					_b = b[k]
+					_a = a[k]
+				# if ~k.indexOf '.js' and typeof _b is \string and ~_b.indexOf '1234-1111'
+				# 	debugger
+				a[k] = \
+				if typeof _a is \function and (typeof _b is \function or (typeof a[_k] is \function or _a = b[_k]))
+					# debugger
+					if isArray = Array.isArray _a._fnArray
+						if Array.isArray _a._fnArray
+							_._fnArray.push _b
+							_a
+						else
+							_a._fnArray = [_a, _b]
+							->
+								"we are _fnArray"
+								for fn in this._fnArray
+									fn.apply this, &
+					else _b || _a
+				else if _.isArray _a
+					if _.isArray _b
+						_.union _b, _a
+					else if typeof _b isnt \undefined
+						_a ++ _b
+					else _a
+				# else if _a isnt _b and _.isObject(_b) and _.isObject(_a)
+				else if _a isnt _b and typeof _b is \object and typeof _a is \object
+					extend(extend({}, _a), _b)
+				# else if typeof _b is \undefined => _a else _b
+				# else
+				# 	if typeof _b is \object
+				else _b || _a
+	return a
+
+
+export embody = (obj) ->
+	deps = {}
+	i = &.length
+	while i-- > 1
+		if _.isObject a = &[i]
+			deps = extend deps, a
+	merge obj, deps
 
 stringify.get_desired_order = (path) ->
 	# TODO: add more cases for common config fles (bower, browserify, etc.)
@@ -555,3 +864,15 @@ stringify.get_desired_order = (path) ->
 		<[name version description homepage author contributors maintainers]>
 	| otherwise => []
 
+export debug_fn = (namespace, cb, not_fn) ->
+	if typeof namespace is \function
+		cb = not_fn
+		cb = namespace
+		namespace = void
+	return ->
+		if typeof cb is \function
+			if not namespace or (typeof namespace is \string and ~DEBUG.indexOf namespace) or (namespace instanceof RegEx and namespace.exec DEBUG)
+				debugger
+			cb ...
+		else if not not_fn
+			throw new Error "can't debug a function this not really a function"
