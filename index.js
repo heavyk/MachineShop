@@ -1,13 +1,17 @@
+// this is MUUUUUY PROVISIONAL
 var LiveScript, ToolShed, Fsm, e, _, Debug, out$ = typeof exports != 'undefined' && exports || this;
-try {
-  out$.LiveScript = LiveScript = require('LiveScript');
-  out$.ToolShed = ToolShed = require('./src/toolshed');
-  out$.Fsm = Fsm = require('./src/fsm').Fsm;
-} catch (e$) {
-  e = e$;
+// try {
+	// //throw new Error
+ //  out$.LiveScript = LiveScript = require('LiveScript');
+ //  out$.ToolShed = ToolShed = require('./src/toolshed');
+ //  out$.Fsm = Fsm = require('./src/fsm').Fsm;
+// } catch (e$) {
+//   e = e$;
   out$.ToolShed = ToolShed = require('./lib/toolshed');
-  out$.Fsm = Fsm = require('./lib/fsm').Fsm;
-}
+  var fsm = require('./lib/fsm')
+  out$.Fsm = fsm.Fsm;
+  out$.Fabuloso = fsm.Fabuloso;
+// }
 out$.Config = Config = ToolShed.Config;
-out$._ = _ = require('lodash');
+out$._ = _ = ToolShed._;
 out$.Debug = Debug = require('debug');
