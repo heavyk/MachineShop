@@ -1,10 +1,5 @@
-require! \assert
-#_ = require 'lodash'
-#EventEmitter = require \events .EventEmitter
-# { _, EventEmitter } = require '..'
-#TODO: add debugging to MachineShop....
-#Debug = require './Debug'
-#Debug = require \debug
+assert = require \assert
+Semver = require \semver
 ToolShed = require './toolshed'
 { Debug, _, EventEmitter } = ToolShed
 debug = Debug 'Fsm'
@@ -13,7 +8,6 @@ debug = Debug 'Fsm'
 #  https://github.com/ifandelse/machina.js
 # and visionmedia's batch
 #  https://github.com/visionmedia/batch
-
 
 slice = [].slice
 # TODO: we can really do this better... I'm sure. make this a part of Machina
@@ -47,11 +41,10 @@ Fabuloso =
 		# 		console.log "arango", &
 		# 		if err then cb 1
 		# 		else if typeof cb is \function then cb res.version
-	'extend.initialize': ->
-		task = @task 'check derivitaves'
-		#for k, d of @derivitaves
+	'extend.initialize': !->
 		if typeof @_derivitaves is \undefined
 			@_derivitaves = {}
+		task = @task 'check derivitaves'
 		_.each @derivitaves, (d, k) ->
 			task.push "checking for #k" (done) ->
 				self = @
@@ -63,9 +56,9 @@ Fabuloso =
 
 		task.end ->
 			# re-emit this to make sure to apply the derivitaves in the uninitialized state
-			# debugger
-			@debug "re-emit #{@initialState}"
-			@emit \transition, toState: @initialState
+			if @state
+				@debug "re-emit #{@initialState}"
+				@emit \transition, toState: @initialState
 
 
 
@@ -127,14 +120,8 @@ export class Fsm
 		if not @state
 			@transition @initialState
 
-	#initialize: ->
-	# make getter / setter?
-	# eventListeners: {}
 	muteEvents: false
-	# states: {}
-	# eventQueue: []
 	concurrency: Infinity
-	# tasks: {}
 	_initialized: false
 	once_initialized: (cb) ~>
 		assert this instanceof Fsm
@@ -143,7 +130,6 @@ export class Fsm
 			if @_initialized
 				cb.call @
 			else
-				# @deferUntilNextHandler cb
 				@eventQueue.push {
 					type: \deferred
 					notState: @initialState
@@ -153,7 +139,6 @@ export class Fsm
 	reset: ~>
 		@state = void
 		@initialize.call @ if typeof @initialize is \function
-		#machina.emit NEW_FSM, @
 		@transitionSoon @initialState if @initialState
 	error: (err) ~>
 		states = @states
@@ -209,6 +194,7 @@ export class Fsm
 				@processQueue \next-exec
 			else
 				@debug "exec: next transition"
+				# console.log "next transition", args
 				obj = {
 					type: \next-transition
 					cmd: cmd
@@ -238,14 +224,11 @@ export class Fsm
 						@inExitHandler = true
 						@states[oldState].onexit.apply @, args1
 						@inExitHandler = false
-				# process.nextTick ~>
 				if @states[newState].onenter
 					@states[newState].onenter.apply @, args1
-				# if @targetReplayState is newState then @processQueue \next-transition
 				if oldState is @initialState and not @_initialized
 					@debug "%s initialzed! in %s", @namespace, newState
 					@_initialized = true
-
 				@debug "fsm: post-transition %s -> %s", oldState, newState
 				@emit.apply @, ["state:#newState"] ++ args1
 				@emit.call @, \transition, {
@@ -500,15 +483,6 @@ export class Fsm
 		if eventName.substr(0, 6) is "state:" and @state is eventName.substr 6
 			process.nextTick ~>
 				callback.call @
-		# if listeners and listeners.length > 20
-		# 	throw new Error "...."
-		# if eventName is \new:SrcDir
-		# 	console.log "listen to new Src!!", listeners and listeners.length
-		# 	try
-		# 		throw new Error "!@\#$ new:Src:" + listeners and listeners.length
-		# 	catch e
-		# 		console.log "this:", this
-		# 		console.log "error: ", e.stack
 		return {
 			eventName: eventName
 			callback: callback
@@ -530,8 +504,6 @@ export class Fsm
 						@eventListeners[eventName].splice i, 1
 				else @eventListeners[eventName] = []
 
-	# we're done now... return
-	#return new Fsm name, options
 
 # later, in the future, integrate this with [node] webworker threads
 # to allow for multiple threads, duh

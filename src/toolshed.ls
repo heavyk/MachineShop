@@ -10,8 +10,8 @@ printf = require \printf
 export EventEmitter = require \eventemitter3 .EventEmitter
 
 # later this will be split into current / da_funk .. but for now use lodash
-# export _ = require \Current
-export _ = require \lodash
+export _ = require \Current
+# export _ = require \lodash
 export nw_version = if process.versions => process.versions.'node-webkit' else void
 export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + if process.versions => process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules else if typeof window is \object => \browser else \unknown
 export HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
