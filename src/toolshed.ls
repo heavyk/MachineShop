@@ -7,15 +7,15 @@ spawn = require \child_process .spawn
 mkdirp = require \mkdirp
 Rimraf = require \rimraf
 printf = require \printf
-export EventEmitter = require \eventemitter3 .EventEmitter
+EventEmitter = require \eventemitter3 .EventEmitter
 
 # later this will be split into current / da_funk .. but for now use lodash
-export _ = require \Current
-# export _ = require \lodash
-export nw_version = if process.versions => process.versions.'node-webkit' else void
-export v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + if process.versions => process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules else if typeof window is \object => \browser else \unknown
-export HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
-export v8_mode = \Release
+# _ = require \Current
+_ = require \lodash
+nw_version = if process.versions => process.versions.'node-webkit' else void
+v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + if process.versions => process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules else if typeof window is \object => \browser else \unknown
+HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
+v8_mode = \Release
 
 # maybe have a look at this:
 # https://github.com/bjouhier/galaxy
@@ -24,7 +24,7 @@ export v8_mode = \Release
 # https://github.com/jmar777/suspend
 
 #TODO: implement DEBUG env variable
-export Debug = (namespace) ->
+Debug = (namespace) ->
 	#TODO: make this a verse/fsm which maintains the list of debugs
 	unless path = Debug.namespaces[namespace]
 		path = process.cwd!
@@ -98,7 +98,7 @@ debug = Debug 'ToolShed'
 # in the case of node-webkit or node-0.11.3+, it should use yield
 # in the case of node normal it should use fibers or gnode style of yield (whichever is faster)
 Fiber = ->
-export Future = ->
+Future = ->
 	#TODO: use yield funcs to simulate a future (a la fibers...)
 
 scan = (str) ->
@@ -113,7 +113,7 @@ scan = (str) ->
 		toks = toks.concat tok
 	toks
 
-export parse = (str) ->
+parse = (str) ->
 	toks = scan str
 	cmds = []
 	cmd = {
@@ -136,14 +136,14 @@ export parse = (str) ->
 			}
 	cmds
 
-export rimraf = (dir, cb) ->
+rimraf = (dir, cb) ->
 	if typeof cb is \function
 		Rimraf dir, cb
 	else
 		# fixme
 		Rimraf dir, ->
 
-export isDirectory = (path) ->
+isDirectory = (path) ->
 	debug "isDirectory %s", path
 	try
 		s = stat path
@@ -151,15 +151,15 @@ export isDirectory = (path) ->
 	catch err
 		return false
 
-export unquote = (str) ->
+unquote = (str) ->
 	str.replace /^"|"$/g, '' .replace /^'|'$/g, '' .replace /\n/g, '\n'
 
-export isQuoted = (str) -> '"' is str.0 or '\'' is str.0
+isQuoted = (str) -> '"' is str.0 or '\'' is str.0
 
-export stripEscapeCodes = (str) -> str.replace /\033\[[^m]*m/g, ''
+stripEscapeCodes = (str) -> str.replace /\033\[[^m]*m/g, ''
 
 # all these should be livescript expands
-export mkdir = (path, cb) ->
+mkdir = (path, cb) ->
 	debug "mkdir %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	if typeof cb is \function
 		mkdirp path, cb
@@ -170,7 +170,7 @@ export mkdir = (path, cb) ->
 		future.wait!
 	else mkdirp.sync path
 
-export exists = (path, cb) ->
+exists = (path, cb) ->
 	debug "exists %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	if typeof cb is \function
 		Fs.exists path, cb
@@ -182,7 +182,7 @@ export exists = (path, cb) ->
 		return v
 	else Fs.existsSync path
 
-export stat = (path, cb) ->
+stat = (path, cb) ->
 	debug "stat %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	if typeof cb is \function
 		Fs.stat path, cb
@@ -193,7 +193,7 @@ export stat = (path, cb) ->
 		future.wait!
 	else Fs.statSync path
 
-export readdir = (path, cb) ->
+readdir = (path, cb) ->
 	debug "readdir(%s) %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	if typeof cb is \function
 		Fs.readdir path, cb
@@ -219,7 +219,7 @@ export readdir = (path, cb) ->
 		catch err then throw err
 		files
 
-export readFile = (path, enc, cb) ->
+readFile = (path, enc, cb) ->
 	debug "readFile %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	#TODO: add in support for extra parameters
 	if typeof enc is \function
@@ -234,7 +234,7 @@ export readFile = (path, enc, cb) ->
 		future.wait!
 	else Fs.readFileSync path, enc
 
-export writeFile = (path, data, cb) ->
+writeFile = (path, data, cb) ->
 	debug "writeFile %s -> %s", path, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	#TODO: add in support for extra parameters
 	if typeof cb is \function
@@ -247,7 +247,7 @@ export writeFile = (path, data, cb) ->
 	else Fs.writeFileSync path, data
 
 # I really wanna make this much more like procstreams... look into it!
-export exec = (cmd, opts, cb) ->
+exec = (cmd, opts, cb) ->
 	if typeof opts is \function
 		cb = opts
 		opts = {stdio: \inherit}
@@ -259,7 +259,7 @@ export exec = (cmd, opts, cb) ->
 		if code then cb new Error "exit code: "+code
 		else cb code
 
-export searchDownwardFor = (file, dir, cb) ->
+searchDownwardFor = (file, dir, cb) ->
 	if typeof dir is \function
 		cb = dir
 		dir = process.cwd!
@@ -278,7 +278,7 @@ export searchDownwardFor = (file, dir, cb) ->
 			else console.log "....", st
 	test_dir dir
 
-export recursive_hardlink = (path, into, cb) ->
+recursive_hardlink = (path, into, cb) ->
 	debug "recursive_hardlink %s -> %s", path, into, if typeof cb is \function then 'callback' else if Fiber.current then \fiber else \sync
 	rh = (done) ->
 		Fs.readdir path, (err, files) ->
@@ -307,7 +307,7 @@ export recursive_hardlink = (path, into, cb) ->
 		catch err then throw err
 		files
 
-export Scope = (scope_name, initial_obj, save_fn) ->
+Scope = (scope_name, initial_obj, save_fn) ->
 	debug = Debug 'scope:'+scope_name
 	WeakMap = global.WeakMap
 	Proxy = global.Proxy
@@ -448,7 +448,7 @@ Scope._ = {}
 #TODO: sacar el codigo de 'el ada' y meterlo aqui
 #TODO: load entire classes and save the functions in formatted test format for editing
 # XXX: instead of duplicating code here just instantiate a Scope
-export Config = (path, initial_obj, opts, save_fn) ->
+Config = (path, initial_obj, opts, save_fn) ->
 	#TODO: if path ends with .js/.ls then precompile it first
 	#TODO: add global path
 	#TODO: add file watching
@@ -495,14 +495,12 @@ export Config = (path, initial_obj, opts, save_fn) ->
 				else
 					stringify obj, stringify.get_desired_order path
 				if json_str isnt written_json_str
-					console.log "writing...", path
 					debug "writing...", path
 					writeFile path, json_str, (err) ->
 						# console.log "writeFile", err
 						if err
 							if err.code is \ENOENT
 								dirname = Path.dirname path
-								console.log "WE HAVE NOENT.. creating", Path.dirname path
 								mkdirp dirname, (err) ->
 									if err
 										ee.emit \error, err
@@ -550,7 +548,7 @@ export Config = (path, initial_obj, opts, save_fn) ->
 		}
 		for k, v of o => reflective[k] = v
 		return reflective
-	Config._saving[path] = true
+	# Config._saving[path] = true
 	Config._[path] = config = make_reflective {}, '', ee
 	# if initial_obj then _.each initial_obj, (v, k) ->
 	# 	console.log "each k: '#k' v:", v
@@ -585,7 +583,9 @@ export Config = (path, initial_obj, opts, save_fn) ->
 			config.once \save ->
 				debug "saved data ready"
 				config.emit \ready, config, data
-		Config._saving[path] = false
+		else
+			config.emit \ready, config, data
+		# Config._saving[path] = false
 	return config
 Config._saving = {}
 Config._ = {}
@@ -604,7 +604,7 @@ clean_str = (str) ->
 	"use strict"
 	(str+'').replace regex_slash, '\\\\' .replace regex_quote, '\\"' .replace regex_newline, '\\n' .replace regex_tab, '\\t'
 
-export stringify = (obj, desired_order = [], indent = 1) ->
+stringify = (obj, desired_order = [], indent = 1) ->
 	out = []
 	# technically, this should scale up perfectly, so there should be no holes in the array
 	# assert i > 0
@@ -677,7 +677,7 @@ da_funk_callthrough = []
 empty_scope = {}
 da_funk_callthrough.i = 0
 
-export da_funk = (obj, scope, refs) ->
+da_funk = (obj, scope, refs) ->
 	return {} if typeof obj isnt \object
 	refs = if typeof refs isnt \object => {} else _.cloneDeep refs
 	# unless refs.name
@@ -764,7 +764,7 @@ export da_funk = (obj, scope, refs) ->
 			refs.__i--
 	obj
 
-export objectify = (str, scope, refs) ->
+objectify = (str, scope, refs) ->
 	return {} unless str
 	# refs = {} if typeof refs isnt \object
 	if str.0 is '/' or str.0 is '.'
@@ -773,7 +773,7 @@ export objectify = (str, scope, refs) ->
 	da_funk if typeof str is \string => JSON.parse str else str, scope, refs
 
 
-export merge = (a, b) ->
+merge = (a, b) ->
 	keys = _.union Object.keys(a), Object.keys(b)
 	for k in keys
 		if b.hasOwnProperty k# and k.0 isnt '_'
@@ -793,7 +793,7 @@ export merge = (a, b) ->
 			else c
 	return a
 
-export extend = (a, b) ->
+extend = (a, b) ->
 	# c = {}
 	# keys = _.union Object.keys(a), Object.keys(b)
 	if typeof b is \object
@@ -846,7 +846,7 @@ export extend = (a, b) ->
 	return a
 
 
-export embody = (obj) ->
+embody = (obj) ->
 	deps = {}
 	i = &.length
 	while i-- > 1
@@ -864,7 +864,7 @@ stringify.get_desired_order = (path) ->
 		<[name version description homepage author contributors maintainers]>
 	| otherwise => []
 
-export debug_fn = (namespace, cb, not_fn) ->
+debug_fn = (namespace, cb, not_fn) ->
 	if typeof namespace is \function
 		cb = not_fn
 		cb = namespace
@@ -876,3 +876,37 @@ export debug_fn = (namespace, cb, not_fn) ->
 			cb ...
 		else if not not_fn
 			throw new Error "can't debug a function this not really a function"
+
+
+export _
+export EventEmitter
+export nw_version
+export v8_version
+export HOME_DIR
+export v8_mode
+export Debug
+export Future
+export parse
+export rimraf
+export isDirectory
+export unquote
+export isQuoted
+export stripEscapeCodes
+export mkdir
+export exists
+export stat
+export readdir
+export readFile
+export writeFile
+export exec
+export searchDownwardFor
+export recursive_hardlink
+export Scope
+export Config
+export stringify
+export da_funk
+export objectify
+export merge
+export extend
+export embody
+export debug_fn

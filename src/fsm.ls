@@ -70,7 +70,6 @@ Fabuloso =
 # TODO: add fsm logging capability (and show this log inside of verse)
 
 export class Fsm
-	total_deferred = 0
 	(name, options) ->
 		if typeof name is \string
 			name += '.fsm.'+Math.random!toString 32 .substr 2
@@ -100,8 +99,6 @@ export class Fsm
 			@initialState = 'uninitialized'
 
 		# console.log "states:", @states, options?states, options
-
-		# process.nextTick ~>
 		switch typeof @initialize
 		| \function =>
 			@initialize.call @, options
