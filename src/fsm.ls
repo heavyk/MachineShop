@@ -1,5 +1,5 @@
-assert = require \assert
-Semver = require \semver
+require! \assert
+
 ToolShed = require './toolshed'
 { Debug, _, EventEmitter } = ToolShed
 debug = Debug 'Fsm'
@@ -10,6 +10,7 @@ debug = Debug 'Fsm'
 #  https://github.com/visionmedia/batch
 
 slice = [].slice
+
 # TODO: we can really do this better... I'm sure. make this a part of Machina
 
 makeFsmNamespace: (->
@@ -17,12 +18,16 @@ makeFsmNamespace: (->
 	-> 'fsm.' + machinaCount++
 )!
 
-# later, this will become a blueprint for multi-client use
-# the name of this is a reference to a gift I received as a child from a girl named Jenny
-# TODO: require the blueprint directly
+# REALLY NEED TO DO DA_FUNK!!!
+
+# add the ability to do:
+# states:
+# 	'node@>=0.11:uninitialized':
+# 		onenter: ->
+# I will need to wait for precalculated derivitaves are done to do this, otherwise I'd have to call Semver.satisfies for every state (not cool!)
 Fabuloso =
 	derivitave: (name, version) ->
-		if version then Semver.version version, @_derivitaves[name]
+		if version then Semver.satisfies version, @_derivitaves[name]
 		else @_derivitaves[name]
 	derivitaves:
 		'node-webkit': (cb) ->
@@ -30,21 +35,11 @@ Fabuloso =
 		node: (cb) ->
 			cb if typeof process is \object and typeof process.versions is \object then process.versions.node else void
 		browser: (cb) ->
-			cb if typeof window.navigator is \object then window.navigator.version else void
-		# TODO: move this over to PublicDB
-		# TODO: move over the jive localarchive stuff to publicdb
-		# arango: (cb) ->
-		# 	#TODO: get the config values from somewhere
-		# 	return cb!
-		# 	db = arango.Connection
-		# 	db.admin.version false, (err, res) ->
-		# 		console.log "arango", &
-		# 		if err then cb 1
-		# 		else if typeof cb is \function then cb res.version
+			cb if typeof window is \object and typeof window.navigator is \object then window.navigator.version else void
 	'extend.initialize': !->
+		task = @task 'check derivitaves'
 		if typeof @_derivitaves is \undefined
 			@_derivitaves = {}
-		task = @task 'check derivitaves'
 		_.each @derivitaves, (d, k) ->
 			task.push "checking for #k" (done) ->
 				self = @
@@ -53,12 +48,39 @@ Fabuloso =
 						self._derivitaves[k] = v
 						self.debug "found derivitave #k@#v"
 					done void, v
+		@on \derivitave:remove ->
+			@debug.todo "go through each one and remove the derivitave version from the extended function"
+		@on \derivitave:add ->
+			@debug.todo "go through each one and add the derivitave versions to the extended function list if it's not already"
+		@on \state:added (state) ->
+			@debug.todo "calculate the derivitaves"
 
 		task.end ->
+			@emit \derivitaves:calculated
+			# event = (e)
+			# OPTIMIZE!!! - this needs to find all the derivitaves just once, then extend the functions
+			# for now though, I'm just looping through them all every transition/cmd (slow)
+			# though for derivitave events, this will be pretty necessary
+			transition = (e) ->
+				_.each @_derivitaves, (v, derivitave) ~>
+					if d = @states."#derivitave:#{e.toState}"
+						d.apply @, e.args
+					if e.fromState and d = @states."#derivitave:#{e.fromState}"
+						d.apply @, e.args
+			exec = (e) ->
+				_.each @_derivitaves, (v, derivitave) ~>
+					if (d = @states."#derivitave:#{@state}") and dd = d[e.type]
+						dd.call @, e.args
+					if (d = @cmds) and dd = d."#derivitave:#{e.type}"
+						dd.call @, e.args
+
+			@on \transition transition
+			@on \executed exec
 			# re-emit this to make sure to apply the derivitaves in the uninitialized state
 			if @state
 				@debug "re-emit #{@initialState}"
-				@emit \transition, toState: @initialState
+				transition toState: @initialState, args: []
+				transition fromState: priorState, toState: @state, args: []
 
 
 
@@ -71,34 +93,30 @@ Fabuloso =
 
 export class Fsm
 	(name, options) ->
+		uniq = Math.random!toString 32 .substr 2
 		if typeof name is \string
-			name += '.fsm.'+Math.random!toString 32 .substr 2
+			name += '.fsm.'+uniq
 		else
 			options = name
-			name = makeFsmNamespace!
+			name = 'fsm.'+uniq
 		@debug = Debug name
-		@debug "new Fsm!"
-		if _machina
-			_machina.emit \new:Fsm, @
 
 		# init objects here... they can't be a part of the prototype...
-		@tasks = {}
+		@_tasks = {}
 		if typeof options is \object
 			ToolShed.extend @, options
 		unless @eventListeners
 			@eventListeners = {}
 		unless @eventQueue
 			@eventQueue = []
-		unless @states
-			console.log "@", @
-			throw new Error "really, a stateless state machine???"
-			@states = {}
 		unless @namespace
 			@namespace = name
+		unless @states
+			throw new Error "really, a stateless state machine (#{@namespace})???"
+			@states = {}
 		if typeof @initialState is \undefined
 			@initialState = 'uninitialized'
 
-		# console.log "states:", @states, options?states, options
 		switch typeof @initialize
 		| \function =>
 			@initialize.call @, options
@@ -112,7 +130,8 @@ export class Fsm
 					if typeof fn is \function
 						fn.call @, options
 
-		#machina.emit \new:Fsm, @
+		if _machina
+			_machina.emit \Fsm:added, @
 		@debug "fsm state #{@state}"
 		if not @state
 			@transition @initialState
@@ -127,6 +146,7 @@ export class Fsm
 			if @_initialized
 				cb.call @
 			else
+				# @deferUntilNextHandler cb
 				@eventQueue.push {
 					type: \deferred
 					notState: @initialState
@@ -139,11 +159,12 @@ export class Fsm
 		@transitionSoon @initialState if @initialState
 	error: (err) ~>
 		states = @states
-		if estate = states[@state].onerror
-			@states[@state].onerror.call @
-		else
-			# commit to the debug log
-			console.error err.stack or (err+'')
+		if typeof (estate = states[@state].onerror) is \function
+			estate.call @, err
+		else if @eventListeners.error
+			@emit \error err
+		if _machina
+			_machina.emit \Fsm:error @, err.stack or (err+'')
 	exec: (cmd) ~>
 		@debug "exec: (%s:%s)", @state, cmd
 		if not @inExitHandler
@@ -170,17 +191,8 @@ export class Fsm
 					type: cmd
 					args: args1
 				}
-				# TODO: check if this works and/or is faster:
-				# @debug.optimize "chech to see if calling toString directly is faster than a concat with '' ... see below:"
-				#if (handler+'') is '[object String]'
-				if (Object::toString.call handler) is '[object String]'
-					@debug "exec bullshit:transition (%s)", handler
-					@debug.todo "I think this is loke a forwarder... look into it and make sure. lala: mycmd: 'lala.lala' should transition to 'lala.lalai or it should call lala: lala: -> console.log 'hello world'"
-					@debug.todo "wait, this might mean that an exec that is lala: lala: 'mmm' -> transition \\mmm"
-					@transition handler
-				else
-					ret = handler.apply @, if handlerName is \* then args else args1
-					@debug "exec called:ret (%s)", ret
+				ret = handler.apply @, if handlerName is \* then args else args1
+				@debug "exec called:ret (%s)", ret
 				@emit.call @, \executed, {
 					type: cmd
 					args: args1
@@ -191,7 +203,6 @@ export class Fsm
 				@processQueue \next-exec
 			else
 				@debug "exec: next transition"
-				# console.log "next transition", args
 				obj = {
 					type: \next-transition
 					cmd: cmd
@@ -200,9 +211,11 @@ export class Fsm
 				@eventQueue.push obj
 			@currentActionArgs = void
 			return ret
-	execSoon: ~> a = &; process.nextTick ~> @exec.apply @, a
-	transitionSoon: ~> a = &; process.nextTick ~> @transition.apply @, a
-	transition: (newState) ->
+	execSoon: !~>
+		a = &; process.nextTick ~> @exec.apply @, a
+	transitionSoon: !~>
+		a = &; process.nextTick ~> @transition.apply @, a
+	transition: (newState) !->
 		if typeof newState isnt \string
 			newState = newState+''
 		if @inTransition
@@ -221,11 +234,14 @@ export class Fsm
 						@inExitHandler = true
 						@states[oldState].onexit.apply @, args1
 						@inExitHandler = false
+				# process.nextTick ~>
 				if @states[newState].onenter
 					@states[newState].onenter.apply @, args1
+				# if @targetReplayState is newState then @processQueue \next-transition
 				if oldState is @initialState and not @_initialized
 					@debug "%s initialzed! in %s", @namespace, newState
 					@_initialized = true
+
 				@debug "fsm: post-transition %s -> %s", oldState, newState
 				@emit.apply @, ["state:#newState"] ++ args1
 				@emit.call @, \transition, {
@@ -260,7 +276,7 @@ export class Fsm
 				fn.apply @, item.args
 				i = @eventQueue.indexOf item
 				@eventQueue.splice i, 1
-	clearQueue: (type, name) ->
+	clearQueue: (type, name) !->
 		if not type
 			@eventQueue = []
 		else
@@ -428,13 +444,13 @@ export class Fsm
 						# console.log "task: #{task.name} completed all tasks..."
 						task.cb.call self, null, task.results, name
 					task.emit \end, null, task.results, name
-					delete self.tasks[name]
+					delete self._tasks[name]
 			#catch e
 			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
-		task.emit \task:new task
-		if @tasks[name]
+		task.emit \task:added task
+		if @_tasks[name]
 			throw new Error "task already exists"
-		return @tasks[name] = task
+		return @_tasks[name] = task
 
 	# promt: (name, q) ->
 	# 	@emit 'prompt', name, q
@@ -461,9 +477,7 @@ export class Fsm
 			if listeners = @eventListeners[eventName]
 				args1 = slice.call args, 1
 				if typeof listeners is \function then listeners.apply @, args1
-				else
-					# console.log "listeners", listeners.length
-					_.each listeners, (callback) ~> callback.apply @, args1
+				else _.each listeners, (callback) ~> callback.apply @, args1
 		doEmit.call @
 		return @
 	on: (eventName, real_cb, callback) ~>
@@ -501,18 +515,20 @@ export class Fsm
 						@eventListeners[eventName].splice i, 1
 				else @eventListeners[eventName] = []
 
+	# we're done now... return
+	#return new Fsm name, options
 
 # later, in the future, integrate this with [node] webworker threads
 # to allow for multiple threads, duh
 class Machina extends Fsm
-	fsms: []
 	(name) ->
-		console.log "yay! we are a new Machina"
-		super "Machina"
+		# TODO: calculate cores and shit
+		fsms = []
 		ToolShed.extend @, Fabuloso
+		super "Machina"
 
 	eventListeners:
-		newfsm: (fsm) ->
+		'Fsm:added': (fsm) ->
 			@fsms.push fsm
 
 	states:
@@ -525,7 +541,8 @@ class Machina extends Fsm
 				@debug "machina ready!"
 
 
-_machina = new Machina
+if typeof process is \object and process.env.MACHINA
+	_machina = new Machina
 Object.defineProperty exports, "Machina",
 	get: ->
 		if not _machina
