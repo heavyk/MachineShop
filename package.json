@@ -23,7 +23,9 @@
 		"node-proxy": "samshull/node-proxy",
 		"printf": "~0.2.0",
 		"rimraf": "~2.2.6",
-		"semver": "~2.3.0"
+		"semver": "~2.3.0",
+		"postal": "~0.10.0",
+		"procstreams": "~0.3.0"
 	},
 	"directories": {
 		"example": "examples",

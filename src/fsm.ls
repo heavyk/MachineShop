@@ -1,5 +1,6 @@
 require! \assert
 
+Postal = require \postal
 ToolShed = require './toolshed'
 { Debug, _, EventEmitter } = ToolShed
 debug = Debug 'Fsm'
@@ -11,12 +12,8 @@ debug = Debug 'Fsm'
 
 slice = [].slice
 
-# TODO: we can really do this better... I'm sure. make this a part of Machina
-
-makeFsmNamespace: (->
-	machinaCount = 0
-	-> 'fsm.' + machinaCount++
-)!
+pipeline = Postal.channel \Machina
+collective = {}
 
 # REALLY NEED TO DO DA_FUNK!!!
 
@@ -84,21 +81,24 @@ Fabuloso =
 
 
 
+# originally this was based off of
 # https://github.com/ifandelse/machina.js
 # v0.3.2
-# modified eventListeners to accept a function, but convert to an array if more than one is found
-# TODO: this should be improved...
-#   there will be problems using the 'off' function and the 'on' function can be optimized as well
-# TODO: add fsm logging capability (and show this log inside of verse)
 
-export class Fsm
+# TODO: there will be problems using the 'off' function and the 'on' function can be optimized as well
+# TODO: all functions need to obey the up and coming Da_Funk formula (bootsie: yer basic func formula)
+
+class Fsm
 	(name, options) ->
-		uniq = Math.random!toString 32 .substr 2
-		if typeof name is \string
-			name += '.fsm.'+uniq
-		else
-			options = name
-			name = 'fsm.'+uniq
+		do
+			uniq = Math.random!toString 32 .substr 2
+			if typeof name is \string
+				name += '.fsm.'+uniq
+			else
+				options = name
+				name = 'fsm.'+uniq
+		while collective[name]
+
 		@debug = Debug name
 
 		# init objects here... they can't be a part of the prototype...
@@ -130,8 +130,8 @@ export class Fsm
 					if typeof fn is \function
 						fn.call @, options
 
-		if _machina
-			_machina.emit \Fsm:added, @
+		collective[name] = @
+		pipline.publish \Fsm:added, {id: name}
 		@debug "fsm state #{@state}"
 		if not @state
 			@transition @initialState
@@ -518,50 +518,10 @@ export class Fsm
 	# we're done now... return
 	#return new Fsm name, options
 
-# later, in the future, integrate this with [node] webworker threads
-# to allow for multiple threads, duh
-# TODO: move this into its own separate file and do a bunch of hardcore streaming on it :)
-#   lol, I meant like pipes, silly
-# p$ = require \procstreams
-class Machina extends Fsm
-	(name) ->
-		# TODO: calculate cores and shit
-		@fsms = []
-		ToolShed.extend @, Fabuloso
-		super "Machina"
-
-	eventListeners:
-		'Fsm:added': (fsm) ->
-			@fsms.push fsm
-
-	states:
-		uninitialized:
-			onenter: ->
-				# switch OS
-				# | \osx =>
-				# 	CORES := $p "sysctl hw.ncpu" .pipe "awk '{print $2}'" .data (err, stdout, stderr) ->
-				# 		if stdout then CORES := Math.round (''+stdout) * 1
-				# | \linux =>
-				# 	CORES := $p "grep -c ^processor /proc/cpuinfo" .data (err, stdout, stderr) ->
-				# 		if stdout then CORES := Math.round (''+stdout) * 1
-				@transition \ready
-
-		ready:
-			onenter: ->
-				@debug "machina ready!"
-
-
-if typeof process is \object and process.env.MACHINA
-	_machina = new Machina
-Object.defineProperty exports, "machina",
-	get: ->
-		if not _machina
-			_machina := new Machina
-		return _machina
-
-
 export Fabuloso
 export Fsm
+export pipeline
+export collective
 
 /*
 #TODO: convert this into a real test...
