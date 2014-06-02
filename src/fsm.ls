@@ -63,16 +63,16 @@ Fabuloso =
 			# though for derivitave events, this will be pretty necessary
 			transition = (e) ->
 				_.each @_derivitaves, (v, derivitave) ~>
-					if d = @states."#derivitave:#{e.toState}"
+					if e.fromState and d = @states[e.fromState]."#derivitave:onexit"
 						d.apply @, e.args
-					if e.fromState and d = @states."#derivitave:#{e.fromState}"
+					if d = @states[e.toState]."#derivitave:onenter"
 						d.apply @, e.args
 			exec = (e) ->
 				_.each @_derivitaves, (v, derivitave) ~>
 					if (d = @states."#derivitave:#{@state}") and dd = d[e.type]
-						dd.call @, e.args
+						dd.apply @, e.args
 					if (d = @cmds) and dd = d."#derivitave:#{e.type}"
-						dd.call @, e.args
+						dd.apply @, e.args
 
 			@on \transition transition
 			@on \executed exec
@@ -520,6 +520,9 @@ export class Fsm
 
 # later, in the future, integrate this with [node] webworker threads
 # to allow for multiple threads, duh
+# TODO: move this into its own separate file and do a bunch of hardcore streaming on it :)
+#   lol, I meant like pipes, silly
+# p$ = require \procstreams
 class Machina extends Fsm
 	(name) ->
 		# TODO: calculate cores and shit
@@ -534,6 +537,13 @@ class Machina extends Fsm
 	states:
 		uninitialized:
 			onenter: ->
+				# switch OS
+				# | \osx =>
+				# 	CORES := $p "sysctl hw.ncpu" .pipe "awk '{print $2}'" .data (err, stdout, stderr) ->
+				# 		if stdout then CORES := Math.round (''+stdout) * 1
+				# | \linux =>
+				# 	CORES := $p "grep -c ^processor /proc/cpuinfo" .data (err, stdout, stderr) ->
+				# 		if stdout then CORES := Math.round (''+stdout) * 1
 				@transition \ready
 
 		ready:
@@ -543,7 +553,7 @@ class Machina extends Fsm
 
 if typeof process is \object and process.env.MACHINA
 	_machina = new Machina
-Object.defineProperty exports, "Machina",
+Object.defineProperty exports, "machina",
 	get: ->
 		if not _machina
 			_machina := new Machina
