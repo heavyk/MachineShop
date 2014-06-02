@@ -14,16 +14,16 @@
 		"url": "https://github.com/heavyk/MachineShop/issues"
 	},
 	"dependencies": {
-		"debug": "^0.8.0",
-		"es6-collections": "^0.2.0",
-		"eventemitter3": "^0.1.2",
+		"debug": "~0.8.0",
+		"es6-collections": "~0.2.0",
+		"eventemitter3": "~0.1.2",
 		"harmony-reflect": "0.0.13",
-		"lodash": "^2.4.1",
-		"mkdirp": "^0.5.0",
-		"node-proxy": "^0.8.0",
-		"printf": "^0.2.0",
-		"rimraf": "^2.2.6",
-		"semver": "2.0.8"
+		"lodash": "~2.4.1",
+		"mkdirp": "~0.5.0",
+		"node-proxy": "samshull/node-proxy",
+		"printf": "~0.2.0",
+		"rimraf": "~2.2.6",
+		"semver": "~2.3.0"
 	},
 	"directories": {
 		"example": "examples",
