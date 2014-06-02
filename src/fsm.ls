@@ -523,7 +523,7 @@ export class Fsm
 class Machina extends Fsm
 	(name) ->
 		# TODO: calculate cores and shit
-		fsms = []
+		@fsms = []
 		ToolShed.extend @, Fabuloso
 		super "Machina"
 
@@ -548,6 +548,10 @@ Object.defineProperty exports, "Machina",
 		if not _machina
 			_machina := new Machina
 		return _machina
+
+
+export Fabuloso
+export Fsm
 
 /*
 #TODO: convert this into a real test...
@@ -638,6 +642,3 @@ fsm = new Fsm {
 
 }
 #*/
-
-export Fabuloso
-export Fsm
