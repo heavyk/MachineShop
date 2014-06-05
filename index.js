@@ -2,13 +2,20 @@
 var LiveScript, ToolShed, Machina, Fsm, e, _, fsm, Debug, out$ = typeof exports != 'undefined' && exports || this;
 // try {
 	// //throw new Error
+  out$._ = _ = require('lodash');
   out$.LiveScript = LiveScript = require('LiveScript');
+
+  out$.DaFunk = DaFunk = require('./src/da_funk');
   out$.ToolShed = ToolShed = require('./src/toolshed');
+
+  out$.Scope = Scope = require('./src/scope').Scope;
+  out$.Config = Config = require('./src/config').Config;
   out$.Machina = Machina = require('./src/machina').Machina;
 
-  fsm = require('./src/fsm');
-  out$.Fsm = Fsm = fsm.Fsm;
-  out$.Fabuloso = fsm.Fabuloso;
+  out$.Fsm = Fsm = require('./src/fsm').Fsm;
+  out$.Empathy = Fsm.Empathy;
+  ToolShed.extend = DaFunk.extend
+  // ToolShed.extend = DaFunk.basic.formula
 // } catch (e$) {
 // //   e = e$;
 // 	console.log("ERROR:", e$.stack)
@@ -21,7 +28,5 @@ var LiveScript, ToolShed, Machina, Fsm, e, _, fsm, Debug, out$ = typeof exports 
 //   out$.pipeline = fsm.pipeline;
 //   out$.Machina = Machina = require('./lib/machina').Machina;
 // }
-out$.Config = Config = ToolShed.Config;
-out$._ = _ = ToolShed._;
+
 out$.Debug = Debug = require('debug');
-console.log("debug", exports.Debug)

@@ -34,6 +34,9 @@ class Machina extends Fsm
 			onenter: ->
 				@debug "machina ready!"
 
+Machina.pipeline = pipeline
+export Machina
+
 # if typeof process is \object and process.env.MACHINA
 # 	# Machina = require './machina' .Machina
 # 	_machina = new Machina
