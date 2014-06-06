@@ -29,4 +29,5 @@ var LiveScript, ToolShed, Machina, Fsm, e, _, fsm, Debug, out$ = typeof exports 
 //   out$.Machina = Machina = require('./lib/machina').Machina;
 // }
 
-out$.Debug = Debug = require('debug');
+out$.Debug = Debug = ToolShed.Debug;
+// out$.Debug = Debug = require('debug');

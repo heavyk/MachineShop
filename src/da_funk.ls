@@ -17,7 +17,6 @@ clean_str = (str) ->
 	(str+'').replace regex_slash, '\\\\' .replace regex_quote, '\\"' .replace regex_newline, '\\n' .replace regex_tab, '\\t'
 
 stringify = (obj, desired_order = [], indent = 1) ->
-	console.log ".", Object.keys obj
 	out = []
 	# technically, this should scale up perfectly, so there should be no holes in the array
 	# assert i > 0
@@ -26,7 +25,6 @@ stringify = (obj, desired_order = [], indent = 1) ->
 
 	# sort our keys alphabetically
 	k = Object.keys obj .sort!
-	console.log "k", k
 	# then, desired order keys get plaed on top in reverse order
 	if (doi = desired_order.length-1) >= 0
 		do
@@ -83,7 +81,6 @@ stringify = (obj, desired_order = [], indent = 1) ->
 					out.push '"'+key+'": null'
 				else
 					out.push '"'+key+'": '+stringify o, desired_order, indent+1
-		console.log "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{_iindent[indent-1]}}#{if indent is 1 => '\n' else ''}"
 		return "{\n#{iindent}"+ out.join(",\n#{iindent}")+"\n#{_iindent[indent-1]}}#{if indent is 1 => '\n' else ''}"
 	else if indent is 1 then "{}\n" else "{}"
 

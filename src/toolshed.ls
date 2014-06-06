@@ -28,7 +28,7 @@ Debug = (namespace) ->
 	unless path = Debug.namespaces[namespace]
 		path = process.cwd!
 
-	if HOME_DIR and false
+	if HOME_DIR and not process.env.DEBUG
 		#path = Path.join path, 'debug.log'
 		debug = !->
 			msg = printf ...

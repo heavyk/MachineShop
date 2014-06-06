@@ -238,40 +238,6 @@ class Fsm
 				args: args
 			}
 			@eventQueue.push queued
-	# DEPRECATED:
-	# deferUntilTransition: (stateName) ->
-	# 	if @currentActionArgs
-	# 		queued = {
-	# 			type: \next-transition
-	# 			untilState: stateName
-	# 			args: @currentActionArgs
-	# 		}
-	# 		@eventQueue.push queued
-	# 		@emit.call @, \deferred, {
-	# 			@state
-	# 			queuedArgs: queued
-	# 		}
-	# DEPRECATED:
-	# deferUntilNextHandler: ->
-	# 	if @currentActionArgs
-	# 		queued = {
-	# 			type: \next-transition
-	# 			args: @currentActionArgs
-	# 		}
-	# 		@eventQueue.push queued
-	# 		@emit.call @, \deferred, {
-	# 			@state
-	# 			queuedArgs: queued
-	# 		}
-	# process: (name) ->
-	# 	if p = @processes and typeof (pp = p[name]) is \function
-	# 		obj = {
-	# 			type: \next-transition
-	# 			cmd: cmd
-	# 			args: args
-	# 		}
-	# 		@eventQueue.push obj
-	# 		@processQueue \next-exec
 	process: (name) ->
 		args = &
 		task = @task "processs:#name"

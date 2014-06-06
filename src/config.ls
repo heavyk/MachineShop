@@ -59,6 +59,7 @@ Config = (path, initial_obj, opts, save_fn) ->
 			iid := setInterval (->
 				obj = config
 				json_str = if opts.ugly => JSON.stringify obj else DaFunk.stringify obj, DaFunk.stringify.desired_order path
+				# console.log "json", json_str
 				if json_str isnt written_json_str
 					Fs.writeFile path, json_str, (err) ->
 					# Fs.writeFile path, written_json_str, (err) ->
@@ -88,8 +89,7 @@ Config = (path, initial_obj, opts, save_fn) ->
 			hasOwn: (obj, key) -> typeof oo[key] isnt \undefined
 			keys: -> Object.keys oo
 			get: (obj, name) ->
-				# debug "(get-) #{oon}.%s:", name, oo[name]
-				debug "(get-) #{oon}.%s:", name, oo[name]
+				# debug "(get) #{oon}.%s:", name, oo[name]
 				if name is \toJSON then -> oo
 				else if name is \inspect then -> require 'util' .inspect oo
 				else if (v = oo[name]) is null and oo[name+'.js']
@@ -136,7 +136,6 @@ Config = (path, initial_obj, opts, save_fn) ->
 				_config = JSON.parse data
 				written_json_str := data
 				_.each _config, (v, k) ->
-					# console.log "k", k, "v", v
 					Config._[path][k] = v
 			catch e
 				config.emit \error e.stack
