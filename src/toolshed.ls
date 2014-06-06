@@ -320,6 +320,31 @@ debug_fn = (namespace, cb, not_fn) ->
 			throw new Error "can't debug a function this not really a function"
 
 
+get_obj_path = (path, obj) ->
+	assert typeof path is \string
+	if typeof obj is \undefined
+		obj = this
+	console.log ":::", not obj, not path
+	console.log "get_obj_path", obj, path
+	path = path.split '.'
+	i = 0
+	while i < path.length
+		obj = obj[path[i++]]
+	obj
+# I think the one above is the fastest.
+# I also think that the above function can be optimized by using indexOf and substr -- another time I suppose :)
+#OPTIMIZE! - jsperf anyone? (this is an almost useless optimization and should be added to Current too. Current shlould be fastest general lib - like lodash)
+#get_in_obj2 = (obj, str) -> (str.split '.').reduce ((o, x) -> o[x]), obj
+set_obj_path = (str, obj, val) ->
+	assert typeof path is \string
+	if typeof val is \undefined
+		obj = this
+	str = str.split '.'
+	while str.length > 1
+		obj = obj[str.shift!]
+	obj[str.shift!] = val
+
+
 export _
 export EventEmitter
 export nw_version
@@ -344,3 +369,5 @@ export exec
 export searchDownwardFor
 export recursive_hardlink
 export debug_fn
+export get_obj_path
+export set_obj_path
