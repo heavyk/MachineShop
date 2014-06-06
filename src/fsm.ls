@@ -108,31 +108,17 @@ class Fsm
 			@emit \error err
 		if _machina
 			_machina.emit \Fsm:error @, err.stack or (err+'')
-	exec: (name) ~>
+	exec: (cmd) ~>
 		args = slice.call &, 0
 
 		if not @inExitHandler and state = @state
 			states = @states
-			handler = name
-			if typeof (fn = states[state][handler]) is \string
-				handler = fn
-			if typeof (fn = (states[state][handler] || states[state].'*')) is \function
-				handler = '*'
-				path = "/states/#{state}/#{handler}"
-			# else if (p = @processes) and typeof (fn = p[handler]) is \function
-			# 	path = "/processes/#{handler}"
-			# 	_fn = fn
-			# 	fn = ->
-			# 		task = @task "process:#handler"
-			# 		task.start _fn
-			# 		task
-			else if (p = @cmds) and typeof (fn = p[handler]) is \function
-				path = "/cmds/#{handler}"
-
-			if typeof fn is \function
+			handler = cmd
+			execd = 0
+			do_exec = (fn, handler, path) !~>
 				args1 = args.slice 1
 				emit_obj = {
-					name, handler, path
+					cmd, handler, path
 					args: args1
 				}
 				@emit.call @, \executing, emit_obj
@@ -141,16 +127,31 @@ class Fsm
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
 				@processQueue \next-exec
-			else
-				@debug "exec: next transition"
+				execd++
+			if typeof (fn = states[state][handler]) is \string
+				handler = fn
+			if typeof (fn = states[state].'*') is \function
+				do_exec fn, '*', "/states/#{state}/#{handler}"
+			# else if (p = @processes) and typeof (fn = p[handler]) is \function
+			# 	path = "/processes/#{handler}"
+			# 	_fn = fn
+			# 	fn = ->
+			# 		task = @task "process:#handler"
+			# 		task.start _fn
+			# 		task
+			if (p = @cmds) and typeof (fn = p[handler]) is \function
+				do_exec fn, handler, "/cmds/#{handler}"
+			if typeof (fn = states[state][handler]) is \function
+				do_exec fn, handler, "/states/#{state}/#{handler}"
+
+			if execd is 0
+				@debug "exec: '#cmd' next transition"
 				obj = {
 					type: \next-transition
-					name: name
+					cmd: cmd
 					args: args
 				}
 				@eventQueue.push obj
-
-			return ret
 	execSoon: !~>
 		a = &; process.nextTick ~> @exec.apply @, a
 	transitionSoon: !~>
@@ -435,9 +436,9 @@ class Fsm
 		doEmit = ~>
 			if @debug.online => switch eventName
 			| \executing =>
-				@debug "executing: (%s:%s)", @state, args.1?type
+				@debug "executing: (%s:%s)", @state, args.1.handler
 			| \executed =>
-				@debug "executed: (%s:%s)", @state, args.1?type
+				@debug "executed: (%s:%s)", @state, args.1.handler
 			| \invalid-state =>
 				@debug.error "bad transition: (%s !-> %s)", args.1.state, args.1.attemptedState
 			| \transition =>
