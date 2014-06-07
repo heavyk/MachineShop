@@ -213,35 +213,24 @@ extend = (a, b) ->
 		for k in keys
 			if b.hasOwnProperty k and k.0 isnt '_'
 				_k = k
-				if (k.indexOf 'extend.') is 0
+				if (k.indexOf 'and|') is 0
 					_b = b[k]
-					k = k.substr "extend.".length
+					k = k.substr "and|".length
 					_a = a[k]
-
-					# if typeof b[_k] is \function
-
-					# if not isArray = Array.isArray _a._fnArray
-					# 	_a._fnArray = []
-					# debugger
 				else
 					_b = b[k]
 					_a = a[k]
-				# if ~k.indexOf '.js' and typeof _b is \string and ~_b.indexOf '1234-1111'
-				# 	debugger
 				a[k] = \
 				if typeof _a is \function and (typeof _b is \function or (typeof a[_k] is \function or _a = b[_k]))
-					# debugger
 					if isArray = Array.isArray _a._fnArray
-						if Array.isArray _a._fnArray
-							_._fnArray.push _b
-							_a
-						else
-							_a._fnArray = [_a, _b]
-							->
-								"we are _fnArray"
-								for fn in this._fnArray
-									fn.apply this, &
-					else _b || _a
+						_._fnArray.push _b
+						_a
+					else
+						_a._fnArray = [_a, _b]
+						((_fn) ->
+							return ->
+								for fn in _fn._fnArray
+									fn.apply this, &)(a[k])
 				else if _.isArray _a
 					if _.isArray _b
 						_.union _b, _a
