@@ -335,14 +335,14 @@ get_obj_path = (path, obj) ->
 # I also think that the above function can be optimized by using indexOf and substr -- another time I suppose :)
 #OPTIMIZE! - jsperf anyone? (this is an almost useless optimization and should be added to Current too. Current shlould be fastest general lib - like lodash)
 #get_in_obj2 = (obj, str) -> (str.split '.').reduce ((o, x) -> o[x]), obj
-set_obj_path = (str, obj, val) ->
+set_obj_path = (path, obj, val) ->
 	assert typeof path is \string
 	if typeof val is \undefined
 		obj = this
-	str = str.split '.'
-	while str.length > 1
-		obj = obj[str.shift!]
-	obj[str.shift!] = val
+	path = path.split '.'
+	while path.length > 1
+		obj = obj[path.shift!]
+	obj[path.shift!] = val
 
 
 export _

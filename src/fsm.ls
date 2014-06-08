@@ -76,7 +76,7 @@ class Fsm
 		collective[name] = @
 		pipeline.publish \Fsm:added, {id: name}
 		@debug "fsm state #{@state}"
-		if not @state
+		if not @state and @initialState isnt false
 			@transition @initialState
 
 	muteEvents: false
