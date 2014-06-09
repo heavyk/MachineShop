@@ -33,6 +33,10 @@ collective = {}
 
 class Fsm
 	(name, options) ->
+		# if typeof id is \string
+		# 	name += "(#id)"
+		# else options = id
+
 		do
 			uniq = Math.random!toString 32 .substr 2
 			if typeof name is \string
@@ -75,9 +79,10 @@ class Fsm
 
 		collective[name] = @
 		pipeline.publish \Fsm:added, {id: name}
-		@debug "fsm state #{@state}"
 		if not @state and @initialState isnt false
+			@debug "fsm transition initialState: #{@initialState}"
 			@transition @initialState
+		else @debug "waiting to transition #{@initialState}"
 
 	muteEvents: false
 	concurrency: Infinity
@@ -126,6 +131,7 @@ class Fsm
 				@debug "exec called:ret (%s)", ret
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
+				@emit.call @, "executed:#handler", emit_obj
 				@processQueue \next-exec
 				execd++
 			if typeof (fn = states[state][handler]) is \string

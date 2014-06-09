@@ -226,11 +226,12 @@ extend = (a, b) ->
 						_a._fnArray.unshift _b
 						_a
 					else
-						_a._fnArray = [_a, _b]
-						((_fn) ->
-							return ->
-								for fn in _fn._fnArray
-									fn.apply this, &)(a[k])
+						_fn = ->
+							for fn in _fn._fnArray
+								fn.apply this, &
+						_fn.fn_iterator = true
+						_fn._fnArray = [_a, _b]
+						_fn
 				else if _.isArray _a
 					if _.isArray _b
 						_.union _b, _a
