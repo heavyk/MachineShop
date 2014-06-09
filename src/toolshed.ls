@@ -28,26 +28,32 @@ Debug = (namespace) ->
 	unless path = Debug.namespaces[namespace]
 		path = process.cwd!
 
+	do_append_msg = (prefix, channel, postfix) ->
+		write = (msg) ->
+			Fs.appendFileSync path, msg
+		if typeof channel is \function
+			write = channel
+			channel = void
+		if typeof postfix is \function
+			write = postfix
+			postfix = ''
+		else if typeof postfix is \undefined
+			postfix = '\n'
+		return !->
+			msg = prefix + (printf ...) + postfix
+			# TODO: make this a stream
+			Fs.appendFileSync path, msg
+			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg}
+
+
 	if HOME_DIR and not process.env.DEBUG
 		#path = Path.join path, 'debug.log'
-		debug = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[DEBUG] #{namespace}: #msg\n"
-		debug.warn = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[WARN] #{namespace}: #msg\n"
-		debug.info = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[INFO] #{namespace}: #msg\n"
-		debug.todo = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[TODO] #{namespace}: #msg\n"
-		debug.error = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[ERROR] #{namespace}: #msg\n"
-		debug.log = !->
-			msg = printf ...
-			Fs.appendFileSync path, "[LOG] #{namespace}: #msg\n"
+		debug = do_append_msg "[DEBUG] #{namespace}: "
+		debug.warn = do_append_msg "[WARN] #{namespace}: ", \warn
+		debug.info = do_append_msg "[INFO] #{namespace}: ", \info
+		debug.todo = do_append_msg "[TODO] #{namespace}: ", \todo
+		debug.error = do_append_msg "[ERROR] #{namespace}: ", \error
+		debug.log = do_append_msg "[LOG] #{namespace}: ", \log
 		start = ->
 			# path := Path.join HOME_DIR, '.ToolShed', "#{namespace}-debug.log"
 			path := Path.join HOME_DIR, '.ToolShed', "debug.log"
@@ -64,24 +70,12 @@ Debug = (namespace) ->
 
 		start!
 	else
-		debug = !->
-			msg = printf ...
-			console.log " [DEBUG - #{namespace}]: #msg"
-		debug.todo = !->
-			msg = printf ...
-			console.info " [INFO - #{namespace}]: [TODO] #msg"
-		debug.warn = !->
-			msg = printf ...
-			console.warn " [WARN #{namespace}]: #msg"
-		debug.info = !->
-			msg = printf ...
-			console.info " [INFO #{namespace}]: #msg"
-		debug.error = !->
-			msg = printf ...
-			console.error " [ERROR #{namespace}]: #msg"
-		debug.log = !->
-			msg = printf ...
-			console.log " [LOG #{namespace}]: #msg"
+		debug = do_append_msg " [DEBUG - #{namespace}]: ", console.log
+		debug.todo = do_append_msg " [INFO - #{namespace}]: [TODO] ", \todo, console.info
+		debug.warn = do_append_msg " [WARN #{namespace}]: ", \warn, console.warn
+		debug.info = do_append_msg " [INFO #{namespace}]: ", \info, console.info
+		debug.error = do_append_msg " [ERROR #{namespace}]: ", \error, console.error
+		debug.log = do_append_msg " [LOG #{namespace}]: ", \log, console.log
 		debug.assert = assert
 		debug.namespace = ~
 			-> namespace
@@ -324,8 +318,6 @@ get_obj_path = (path, obj) ->
 	assert typeof path is \string
 	if typeof obj is \undefined
 		obj = this
-	console.log ":::", not obj, not path
-	console.log "get_obj_path", obj, path
 	path = path.split '.'
 	i = 0
 	while i < path.length

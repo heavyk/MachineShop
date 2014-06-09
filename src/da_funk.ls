@@ -223,7 +223,7 @@ extend = (a, b) ->
 				a[k] = \
 				if typeof _a is \function and (typeof _b is \function or (typeof a[_k] is \function or _a = b[_k]))
 					if isArray = Array.isArray _a._fnArray
-						_._fnArray.push _b
+						_a._fnArray.unshift _b
 						_a
 					else
 						_a._fnArray = [_a, _b]
@@ -245,6 +245,12 @@ extend = (a, b) ->
 				# 	if typeof _b is \object
 				else _b || _a
 	return a
+
+# DaFunk.formula obj, \improves, another
+# gatta give a shout out to bootsie for his basic funk formula
+# yt: IHE6hZU72A4, 2Sh9cezHNec
+formula = (a, op, b) ->
+
 
 
 embody = (obj) ->
