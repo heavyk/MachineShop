@@ -116,11 +116,13 @@ class Fsm
 			_machina.emit \Fsm:error @, err.stack or (err+'')
 	exec: (cmd) ~>
 		args = slice.call &, 0
+		execd = 0
 
+		@debug "exec: #cmd in #{@state}"
 		if not @inExitHandler and state = @state
 			states = @states
 			handler = cmd
-			execd = 0
+
 			do_exec = (fn, handler, path) !~>
 				args1 = args.slice 1
 				emit_obj = {
@@ -129,7 +131,7 @@ class Fsm
 				}
 				@emit.call @, \executing, emit_obj
 				ret = fn.apply @, if handler is \* => args else args1
-				@debug "exec called:ret (%s)", ret
+				@debug "exec(%s) called:ret (%s)", handler, ret
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
 				@emit.call @, "executed:#handler", emit_obj
@@ -146,19 +148,20 @@ class Fsm
 			# 		task = @task "process:#handler"
 			# 		task.start _fn
 			# 		task
+			@debug "handler #handler"
 			if (p = @cmds) and typeof (fn = p[handler]) is \function
 				do_exec fn, handler, "/cmds/#{handler}"
 			if typeof (fn = states[state][handler]) is \function
 				do_exec fn, handler, "/states/#{state}/#{handler}"
 
-			if execd is 0
-				@debug "exec: '#cmd' next transition"
-				obj = {
-					type: \next-transition
-					cmd: cmd
-					args: args
-				}
-				@eventQueue.push obj
+		if execd is 0
+			@debug "exec: '#cmd' next transition"
+			obj = {
+				type: \next-transition
+				cmd: cmd
+				args: args
+			}
+			@eventQueue.push obj
 	execSoon: !~>
 		a = &; process.nextTick ~> @exec.apply @, a
 	transitionSoon: !~>
@@ -209,8 +212,9 @@ class Fsm
 					args: args1
 				}
 	processQueue: (type) !->
+		@debug "processQueue #type #{@eventQueue.length}"
 		filterFn = if type is \next-transition
-			(item) ~> item.type is \next-transition and typeof @states[@state][item.cmd] isnt \undefined
+			(item) ~> item.type is \next-transition
 		else if type is \deferred
 			(item, i) ~> item.type is \deferred and ((item.untilState and item.untilState is @state) or (item.notState and item.notState isnt @state))
 		else
@@ -417,7 +421,7 @@ class Fsm
 			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
 		task.emit \task:added task
 		if @_tasks[name]
-			throw new Error "task already exists"
+			throw new Error "task '#name' already exists"
 
 		if typeof cb is \function
 			task.start cb
