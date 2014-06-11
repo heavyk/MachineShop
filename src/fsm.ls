@@ -37,6 +37,7 @@ class Fsm
 		# 	name += "(#id)"
 		# else options = id
 
+		args1 = slice.call &, 1
 		do
 			uniq = Math.random!toString 32 .substr 2
 			if typeof name is \string
@@ -64,18 +65,18 @@ class Fsm
 		if typeof @initialState is \undefined
 			@initialState = 'uninitialized'
 
-		switch typeof @initialize
+		if (t = typeof @initialize) isnt \undefined => switch t
 		| \function =>
-			@initialize.call @, options
+			@initialize.apply @, args1
 		| \object =>
 			if Array.isArray @initialize
 				for fn in @initialize
 					if typeof fn is \function
-						fn.call @, options
+						fn.apply @, args1
 			else
 				for key, fn of @initialize
 					if typeof fn is \function
-						fn.call @, options
+						fn.apply @, args1
 
 		collective[name] = @
 		pipeline.publish \Fsm:added, {id: name}
