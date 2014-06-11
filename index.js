@@ -1,33 +1,27 @@
 // this is MUUUUUY PROVISIONAL
 var LiveScript, ToolShed, Machina, Fsm, e, _, fsm, Debug, out$ = typeof exports != 'undefined' && exports || this;
-// try {
-	// //throw new Error
   out$._ = _ = require('lodash');
-  out$.LiveScript = LiveScript = require('LiveScript');
 
-  out$.DaFunk = DaFunk = require('./src/da_funk');
-  out$.ToolShed = ToolShed = require('./src/toolshed');
+// this is a stupid hack to trick out browserify (otherwise it says errors about src/... not found (it doesn't know about .ls extension))
+if(require && require.extensions && require.extensions['.ls']) {
+  var dir = './src'
+  out$.DaFunk = DaFunk = require(dir + '/da_funk');
+  out$.ToolShed = ToolShed = require(dir + '/toolshed');
+  out$.Scope = Scope = require(dir + '/scope').Scope;
+  out$.Config = Config = require(dir + '/config').Config;
+  out$.Machina = Machina = require(dir + '/machina').Machina;
+  out$.Fsm = Fsm = require(dir + '/fsm').Fsm;
+} else {
+  out$.DaFunk = DaFunk = require('./lib/da_funk');
+  out$.ToolShed = ToolShed = require('./lib/toolshed');
+  out$.Scope = Scope = require('./lib/scope').Scope;
+  out$.Config = Config = require('./lib/config').Config;
+  out$.Machina = Machina = require('./lib/machina').Machina;
+  out$.Fsm = Fsm = require('./lib/fsm').Fsm;
+}
 
-  out$.Scope = Scope = require('./src/scope').Scope;
-  out$.Config = Config = require('./src/config').Config;
-  out$.Machina = Machina = require('./src/machina').Machina;
-
-  out$.Fsm = Fsm = require('./src/fsm').Fsm;
-  out$.Empathy = Fsm.Empathy;
-  ToolShed.extend = DaFunk.extend
-  // ToolShed.extend = DaFunk.basic.formula
-// } catch (e$) {
-// //   e = e$;
-// 	console.log("ERROR:", e$.stack)
-//   throw(e$);
-//   fsm = require('./lib/fsm');
-//   out$.ToolShed = ToolShed = require('./lib/toolshed');
-
-//   out$.Fsm = fsm.Fsm;
-//   out$.Fabuloso = fsm.Fabuloso;
-//   out$.pipeline = fsm.pipeline;
-//   out$.Machina = Machina = require('./lib/machina').Machina;
-// }
-
+// out$.Empathy = Fsm.Empathy;
+console.log("out:", out$)
+ToolShed.extend = DaFunk.extend
+// ToolShed.extend = DaFunk.basic.formula
 out$.Debug = Debug = ToolShed.Debug;
-// out$.Debug = Debug = require('debug');
