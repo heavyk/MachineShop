@@ -281,26 +281,21 @@ class Fsm
 			_name = name
 
 		task = new EventEmitter
-		task.name = _name
+		task.name = name = _name
 		@debug "new task '%s'", _name
 		task.scope = self
 		task.i = 0
 		task.running = 0
 		task.complete = 0
-		task.concurrency = _concurrency
+		task.concurrency = concurrency = _concurrency
 		task.results = []
 		task.msgs = []
 		task.chokes = []
 		task.fns = []
-		task.branch = (name, cb) ->
-			if typeof name is \function
-				cb = name
-			if typeof name isnt \string
-				name = task.name+':branch'
-			branch = self.task self, name, task.concurrency
-			if typeof cb is \function
-				branch.start cb
-			branch
+		task.wait = ->
+			fsm.debug "task(%s): choke %d", name, task.fns.length
+			task.chokes.push task.fns.length
+			return task
 		task.choke = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
