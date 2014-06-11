@@ -248,6 +248,10 @@ exec = (cmd, opts, cb) ->
 	opts.env = process.env unless opts.env
 	cmds = cmd.split ' '
 	p = spawn cmds.0, cmds.slice(1), opts
+	p.on \error (err) ->
+		opts.env = "omitted"
+		debug "exec '#cmd' failed %s", DaFunk.stringify opts
+		cb err
 	p.on \close (code) ->
 		if code then cb new Error "exit code: "+code
 		else cb code
