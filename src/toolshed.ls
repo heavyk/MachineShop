@@ -42,7 +42,7 @@ Debug = (namespace) ->
 		return !->
 			msg = prefix + (printf ...) + postfix
 			# TODO: make this a stream
-			Fs.appendFileSync path, msg
+			write msg
 			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg}
 
 
@@ -70,12 +70,13 @@ Debug = (namespace) ->
 
 		start!
 	else
-		debug = do_append_msg " [DEBUG - #{namespace}]: ", console.log
-		debug.todo = do_append_msg " [INFO - #{namespace}]: [TODO] ", \todo, console.info
-		debug.warn = do_append_msg " [WARN #{namespace}]: ", \warn, console.warn
-		debug.info = do_append_msg " [INFO #{namespace}]: ", \info, console.info
-		debug.error = do_append_msg " [ERROR #{namespace}]: ", \error, console.error
-		debug.log = do_append_msg " [LOG #{namespace}]: ", \log, console.log
+		# EXPLANATION: the reason for the double function is because of invalid invocation feature of console.log
+		debug = do_append_msg " [DEBUG - #{namespace}]: ", (msg) -> console.log msg
+		debug.todo = do_append_msg " [INFO - #{namespace}]: [TODO] ", \todo, (msg) -> console.info msg
+		debug.warn = do_append_msg " [WARN #{namespace}]: ", \warn, (msg) -> console.warn msg
+		debug.info = do_append_msg " [INFO #{namespace}]: ", \info, (msg) -> console.info msg
+		debug.error = do_append_msg " [ERROR #{namespace}]: ", \error, (msg) -> console.error msg
+		debug.log = do_append_msg " [LOG #{namespace}]: ", \log, (msg) -> console.log msg
 		debug.assert = assert
 		debug.namespace = ~
 			-> namespace
