@@ -29,20 +29,24 @@ Debug = (namespace) ->
 		path = process.cwd!
 
 	do_append_msg = (prefix, channel, postfix) ->
-		write = (msg) ->
+		_write = (msg) ->
 			Fs.appendFileSync path, msg
 		if typeof channel is \function
 			write = channel
 			channel = void
 		if typeof postfix is \function
 			write = postfix
-			postfix = ''
-		else if typeof postfix is \undefined
 			postfix = '\n'
+		if typeof postfix is \undefined
+			postfix = '\n'
+
+		if typeof write isnt \function
+			write = _write
+
 		return !->
 			msg = prefix + (printf ...) + postfix
 			# TODO: make this a stream
-			write msg
+			write msg, _write, prefix, channel, postfix
 			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg}
 
 
@@ -51,7 +55,14 @@ Debug = (namespace) ->
 		debug = do_append_msg "[DEBUG] #{namespace}: "
 		debug.warn = do_append_msg "[WARN] #{namespace}: ", \warn
 		debug.info = do_append_msg "[INFO] #{namespace}: ", \info
-		debug.todo = do_append_msg "[TODO] #{namespace}: ", \todo
+		debug.todo = do_append_msg "[TODO] #{namespace}: ", \todo, (msg, write, prefix, channel, postfix) !->
+			try
+				throw new Error "TODO: error"
+			catch e
+				stack = e.stack.split '\n'
+				console.log "postfix", postfix.length
+				msg = (msg.substr 0, msg.length - postfix.length) + "\n    at #{stack.4.trim!}" + postfix
+			write msg
 		debug.error = do_append_msg "[ERROR] #{namespace}: ", \error
 		debug.log = do_append_msg "[LOG] #{namespace}: ", \log
 		start = ->
@@ -59,7 +70,7 @@ Debug = (namespace) ->
 			path := Path.join HOME_DIR, '.ToolShed', "debug.log"
 			mkdirp Path.dirname(path), (err) ->
 				Fs.writeFileSync path, ""
-				debug "starting..."
+				debug "Debug(#namespace) starting at '#path'"
 
 		debug.namespace = ~
 			-> namespace

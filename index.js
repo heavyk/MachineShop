@@ -21,7 +21,6 @@ if(require && require.extensions && require.extensions['.ls']) {
 }
 
 // out$.Empathy = Fsm.Empathy;
-console.log("out:", out$)
 ToolShed.extend = DaFunk.extend
 // ToolShed.extend = DaFunk.basic.formula
 out$.Debug = Debug = ToolShed.Debug;
