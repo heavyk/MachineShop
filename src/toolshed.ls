@@ -28,41 +28,54 @@ Debug = (namespace) ->
 	unless path = Debug.namespaces[namespace]
 		path = process.cwd!
 
-	do_append_msg = (prefix, channel, postfix) ->
-		_write = (msg) ->
-			Fs.appendFileSync path, msg
+	do_append_msg = (channel, prefix, postfix) ->
+		_write = (msg, channel, prefix, postfix) !->
+			if typeof postfix isnt \string
+				postfix = '\n'
+			else if postfix[*-1] isnt '\n'
+				postfix += '\n'
+			Fs.appendFileSync path, (prefix + msg + postfix)
+
 		if typeof channel is \function
 			write = channel
-			channel = void
+			channel = \debug
+			prefix = ''
+		if typeof prefix is \function
+			write = prefix
+			prefix = ''
 		if typeof postfix is \function
 			write = postfix
-			postfix = '\n'
-		if typeof postfix is \undefined
-			postfix = '\n'
 
 		if typeof write isnt \function
 			write = _write
+		else if typeof postfix isnt \string
+				postfix = ''
 
 		return !->
-			msg = prefix + (printf ...) + postfix
+			msg = printf ...
 			# TODO: make this a stream
-			write msg, _write, prefix, channel, postfix
+			write msg, channel, prefix, postfix, _write
 			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg}
 
 
 	if HOME_DIR and not process.env.DEBUG
 		#path = Path.join path, 'debug.log'
-		debug = do_append_msg "[DEBUG] #{namespace}: "
-		debug.warn = do_append_msg "[WARN] #{namespace}: ", \warn
-		debug.info = do_append_msg "[INFO] #{namespace}: ", \info
-		debug.todo = do_append_msg "[TODO] #{namespace}: ", \todo, (msg, write, prefix, channel, postfix) !->
+		debug = do_append_msg \debug, "[DEBUG] #{namespace}: "
+		debug.warn = do_append_msg \warn, "[WARN] #{namespace}: "
+		debug.info = do_append_msg \info, "[INFO] #{namespace}: "
+		debug.todo = do_append_msg \todo, "[TODO] #{namespace}: ", (msg, channel, prefix, postfix, write) !->
 			try
 				throw new Error "TODO: error"
 			catch e
 				stack = e.stack.split '\n'
-				console.log "postfix", postfix.length
-				msg = (msg.substr 0, msg.length - postfix.length) + "\n    at #{stack.4.trim!}" + postfix
-			write msg
+				postfix += '\n'
+				i = 3
+				if ~(stack[i].indexOf 'do_exec')
+					i += 1
+				if ~(s = stack[i].indexOf 'prototype.exec')
+					i += 1
+				postfix += "\n    at #{stack[i].trim!}"
+			write msg, channel, prefix, postfix
 		debug.error = do_append_msg "[ERROR] #{namespace}: ", \error
 		debug.log = do_append_msg "[LOG] #{namespace}: ", \log
 		start = ->
@@ -82,12 +95,15 @@ Debug = (namespace) ->
 		start!
 	else
 		# EXPLANATION: the reason for the double function is because of invalid invocation feature of console.log
-		debug = do_append_msg " [DEBUG - #{namespace}]: ", (msg) -> console.log msg
-		debug.todo = do_append_msg " [INFO - #{namespace}]: [TODO] ", \todo, (msg) -> console.info msg
-		debug.warn = do_append_msg " [WARN #{namespace}]: ", \warn, (msg) -> console.warn msg
-		debug.info = do_append_msg " [INFO #{namespace}]: ", \info, (msg) -> console.info msg
-		debug.error = do_append_msg " [ERROR #{namespace}]: ", \error, (msg) -> console.error msg
-		debug.log = do_append_msg " [LOG #{namespace}]: ", \log, (msg) -> console.log msg
+		if console.debug
+			debug = do_append_msg \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.debug (msg + postfix)
+		else
+			debug = do_append_msg \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (prefix + msg + postfix)
+		debug.todo = do_append_msg \todo, " [INFO - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info ('[TODO] ' + msg + postfix)
+		debug.warn = do_append_msg \warn, " [WARN #{namespace}]: ", (msg, channel, prefix, postfix) -> console.warn (msg + postfix)
+		debug.info = do_append_msg \info, " [INFO #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info (msg + postfix)
+		debug.error = do_append_msg \error, " [ERROR #{namespace}]: ", (msg, channel, prefix, postfix) -> console.error (msg + postfix)
+		debug.log = do_append_msg \log, " [LOG #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (msg + postfix)
 		debug.assert = assert
 		debug.namespace = ~
 			-> namespace
