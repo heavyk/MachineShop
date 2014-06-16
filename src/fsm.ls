@@ -131,7 +131,7 @@ class Fsm
 				}
 				@emit.call @, \executing, emit_obj
 				ret = fn.apply @, if handler is \* => args else args1
-				@debug "exec(%s) called:ret (%s)", handler, ret
+				@debug "exec(%s) called:ret (%s)", handler, if typeof ret is \object => \object else ret
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
 				@emit.call @, "executed:#handler", emit_obj
@@ -155,7 +155,7 @@ class Fsm
 				do_exec fn, handler, "/states/#{state}/#{handler}"
 
 		if execd is 0
-			@debug "exec: '#cmd' next transition"
+			@debug "exec: '#cmd' next transition (in state:#{@state}"
 			obj = {
 				type: \next-transition
 				cmd: cmd
@@ -190,7 +190,7 @@ class Fsm
 					@states[newState].onenter.apply @, args1
 				# if @targetReplayState is newState then @processQueue \next-transition
 				if oldState is @initialState and not @_initialized
-					@debug "%s initialzed! in %s", @namespace, newState
+					@debug "initialzed! in %s", newState
 					@_initialized = true
 
 				@debug "fsm: post-transition %s -> %s", oldState, newState
@@ -212,7 +212,6 @@ class Fsm
 					args: args1
 				}
 	processQueue: (type) !->
-		@debug "processQueue #type #{@eventQueue.length}"
 		filterFn = if type is \next-transition
 			(item) ~> item.type is \next-transition
 		else if type is \deferred
@@ -222,6 +221,8 @@ class Fsm
 		len_before = @eventQueue.length
 		toProcess = _.filter @eventQueue, filterFn
 
+		if toProcess.length
+			@debug "processQueue:#type(#{toProcess.length})"
 		_.each toProcess, !(item) ~>
 			if filterFn item, i
 				fn = if item.type is \deferred => item.cb else @exec
