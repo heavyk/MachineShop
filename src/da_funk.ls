@@ -139,9 +139,6 @@ da_funk = (obj, scope, refs) ->
 					//throw e;
 				} */
 			}
-			//f.toString = function() {
-			//	return "\\ncustom_func: "+name+"\\nargs: "+args+"\\nbody: "+body;
-			//}
 			return f
 		}
 		"""
