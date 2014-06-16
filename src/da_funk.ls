@@ -105,9 +105,13 @@ da_funk = (obj, scope, refs) ->
 		scope = {} #empty_scope
 	# console.error "da_funk", scope
 
+
+	# this is obsolete. see duralog's work on evel:
+	# natevw/evel#20 and natevw/evel#21
+	# soon, it'll integrate
 	f = new Function """
 		if(this !== window && (typeof global !== 'object' || this !== global)) {
-			for (var i in this){
+			for (var i in this) {
 				eval('var '+i+' = this[i];');
 			}
 		}
@@ -116,7 +120,6 @@ da_funk = (obj, scope, refs) ->
 			var self = this;
 			var f = function() {
 				// try {
-					//console.log("this:", this, "self:", self)
 					return fn.apply(this, arguments);
 				/* } catch(e) {
 					var s = (e.stack+'').split('\\n')
@@ -205,32 +208,47 @@ merge = (a, b) ->
 			else c
 	return a
 
-extend = (a, b) ->
+improve = (a, b) ->
 	# c = {}
 	# keys = _.union Object.keys(a), Object.keys(b)
 	if typeof b is \object
 		keys = Object.keys(b)
 		for k in keys
+			_b = b[k]
+			_a = a[k]
 			if b.hasOwnProperty k and k.0 isnt '_'
 				_k = k
-				if (k.indexOf 'and|') is 0
-					_b = b[k]
-					k = k.substr "and|".length
+				a[k] = \
+				if _a isnt _b and typeof _b is \object and typeof _a is \object
+					improve(improve({}, _a), _b)
+				else _b || _a
+	return a
+
+
+extend = (a, b) ->
+	if typeof b is \object or typeof b is \function
+		keys = Object.keys(b)
+		for k in keys
+			if b.hasOwnProperty k and k.0 isnt '_'
+				_k = k
+				_a = a[k]
+				is_and = false
+				if (k.indexOf 'also|') is 0
+					is_and = true
+					_b = b[_k]
+					k = k.substr "also|".length
 					_a = a[k]
 				else
+					is_and = true if k is \initialize
 					_b = b[k]
-					_a = a[k]
 				a[k] = \
-				if typeof _a is \function and (typeof _b is \function or (typeof a[_k] is \function or _a = b[_k]))
-					if isArray = Array.isArray _a._fnArray
-						_a._fnArray.unshift _b
+				if is_and and (typeof _a is \function or (is_and and if typeof a[_k] is \function => _a = a[_k])) and (typeof _b is \function)
+					if isArray = Array.isArray _a.__fnArray
+						_a.__fnArray.push _b
 						_a
 					else
-						_fn = ->
-							for fn in _fn._fnArray
-								fn.apply this, &
-						_fn.fn_iterator = true
-						_fn._fnArray = [_a, _b]
+						_fn = -> for fn in _fn.__fnArray => fn.apply this, &
+						_fn.__fnArray = [_a, _b]
 						_fn
 				else if _.isArray _a
 					if _.isArray _b
@@ -277,4 +295,5 @@ export da_funk
 export objectify
 export merge
 export extend
+export improve
 export embody
