@@ -122,6 +122,23 @@ Fiber = ->
 Future = ->
 	#TODO: use yield funcs to simulate a future (a la fibers...)
 
+class Environment
+	_bp:
+		idea: \Environment
+
+
+	(env) ->
+		if typeof env isnt \object
+			env = process.env
+
+		@nw_version = if process.versions => process.versions.'node-webkit' else void
+		@v8_version = (if nw_version then \nw else \node) + '_' + process.platform + '_' + process.arch + '_' + if process.versions => process.versions.v8.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/).0 + '-' + process.versions.modules else if typeof window is \object => \browser else \unknown
+		@HOME_DIR = if process.platform is \win32 then process.env.USERPROFILE else process.env.HOME
+
+		@env = env
+
+
+
 scan = (str) ->
 	re = /(?:(\S*"[^"]+")|(\S*'[^']+')|(\S+))/g
 	toks = []
@@ -358,15 +375,38 @@ get_obj_path = (path, obj) ->
 # I think the one above is the fastest.
 # I also think that the above function can be optimized by using indexOf and substr -- another time I suppose :)
 #OPTIMIZE! - jsperf anyone? (this is an almost useless optimization and should be added to Current too. Current shlould be fastest general lib - like lodash)
-#get_in_obj2 = (obj, str) -> (str.split '.').reduce ((o, x) -> o[x]), obj
-set_obj_path = (path, obj, val) ->
-	assert typeof path is \string
+#get_in_obj2 = (obj, str) -> (str.split '/').reduce ((o, x) -> o[x]), obj
+# this is now possible:
+#   ToolShed.set_obj_path "property.{DaFunk, ToolShed}", my_obj, require \MachineShop
+# TODO: add types to LiveScript:
+# set_obj_path = (String path, Function^Object obj, !undefined val, String split = '/') ->
+set_obj_path = (path, obj, val, split) ->
+	if typeof path isnt \string => throw new Error "arg{1:path} is supposed to be a string"
+	if typeof obj isnt \function and typeof obj isnt \object => throw new Error "arg{2:val} must be an Object or a Function"
+	if typeof val is \undefined => throw new Error "arg{3:val} cannot be undefined"
+	if typeof split is \undefined => split = '/'
+	if typeof split isnt \string => throw new Error "arg{4:split} is supposed to be a string"
 	if typeof val is \undefined
 		obj = this
-	path = path.split '.'
-	while path.length > 1
-		obj = obj[path.shift!]
-	obj[path.shift!] = val
+	if ~(i = path.indexOf '{') and ~(ii = path.lastIndexOf '}')
+		paths = path.substr i+1, ii-1
+		for p in path = paths.split ','
+			path = p.trim!
+			set_obj_path "#{path.substr 0, i}#p#{path.substr i+1}", obj, val[p]
+		return
+	if (paths = path.split '.').length
+		subobj = obj
+		while paths.length > 1
+			subobj = obj[p = paths.shift!trim!]
+			if typeof subobj is \undefined
+				subobj = {}
+				subobj[p] = val
+				# obj[p] = subobj
+		obj[p = paths.shift!trim!] = val
+
+	else
+		# TODO: add a @debug.fixme "you called set_obj_path without a resolvable path"
+		debug.warn "could not find a path to set to. this is probably not intended"
 
 
 export _
@@ -374,6 +414,7 @@ export EventEmitter
 export nw_version
 export v8_version
 export HOME_DIR
+export Environment
 export v8_mode
 export Debug
 export Future
