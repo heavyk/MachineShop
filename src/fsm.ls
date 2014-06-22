@@ -15,7 +15,8 @@ slice = [].slice
 pipeline = Postal.channel \Machina
 collective = {}
 
-# REALLY NEED TO DO DA_FUNK!!!
+# for state recording, I think that this can be improved on quite a bit...
+# I'd like to see a state progression like this [/state] -> saving -> saved -> [/state]
 
 # add the ability to do:
 # states:
@@ -375,17 +376,18 @@ class Fsm
 			start = new Date
 			task.i++
 			task.running++
+			msg = task.msgs[i]
 
 			fsm.debug "task(%s): running... \#%s (complete:%d/%d) (%s)", name, i, task.complete, task.fns.length, task.msgs[i]
 			task.emit \running {
-				msg: task.msgs[i]
+				msg: msg
 				index: i
 				running: task.running
 				pending: pending: task.complete - task.fns.length
 				total: task.fns.length
 			}
 			#try
-			fn.call task.scope, (err, res) ->
+			done_fn = (err, res) ->
 				task.running--
 				if err
 					task._paused = true
@@ -403,7 +405,7 @@ class Fsm
 					pending: task.complete - task.fns.length
 					total: task.fns.length
 					complete: task.complete
-					msg: task.msgs[i]
+					msg: msg
 					percent: task.complete / task.fns.length * 100 .|. 0
 					start: start
 					end: end
@@ -419,6 +421,19 @@ class Fsm
 					task.emit \end, null, task.results, name
 					delete self._tasks[name]
 			#catch e
+			done_fn.dover = (times) ->
+				times = 2 if typeof times is \undefined
+				self.debug
+				done_fn.dover = done_fn._dover times
+				done_fn.dover!
+			done_fn._dover = (times) ->
+				return ->
+					if times--
+						self.debug "running... task remaining lives: #{times}"
+						fn.call task.scope, done_fn
+					else done_fn new Error "retry failed for task '#msg'"
+
+			fn.call task.scope, done_fn
 			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
 		task.emit \task:added task
 		if @_tasks[name]
