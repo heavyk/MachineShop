@@ -174,7 +174,7 @@ parse = (str) ->
 			}
 	cmds
 
-rimraf = (dir, cb) ->
+rm = (dir, cb) ->
 	if typeof cb is \function
 		Rimraf dir, cb
 	else
@@ -289,17 +289,37 @@ exec = (cmd, opts, cb) ->
 	if typeof opts is \function
 		cb = opts
 		opts = {stdio: \inherit}
-	opts.stdio = \inherit unless opts.stdio
+
+	if debug.deep
+		var stack
+		try
+			throw new Error "exec '#cmd' #{DaFunk.stringify opts} failed"
+		catch error
+			stack := error.stack
+
+	opts.stdio = \pipe unless opts.stdio is \inherit
 	opts.env = process.env unless opts.env
 	cmds = cmd.split ' '
 	p = spawn cmds.0, cmds.slice(1), opts
+	stdout = ''
+	stderr = ''
+	p.stdout.on \data (data) ->
+		stdout += data+''
+		process.stdout.write data unless opts.stdio is \silent
+	p.stderr.on \data (data) ->
+		stderr += data+''
+		process.stderr.write data unless opts.stdio is \silent
 	p.on \error (err) ->
-		opts.env = "omitted"
+		opts.env = "process.env" if opts.env is process.env
 		debug "exec '#cmd' failed %s", DaFunk.stringify opts
 		cb err
 	p.on \close (code) ->
-		if code then cb new Error "exit code: "+code
-		else cb code
+		if code
+			debug "#cmd -> #code, stdout: '#stdout' stderr: '#stderr'"
+			if debug.deep
+				debug stack
+		cb code, stdout, stderr
+	return p
 
 searchDownwardFor = (file, dir, cb) ->
 	if typeof dir is \function
@@ -419,7 +439,7 @@ export v8_mode
 export Debug
 export Future
 export parse
-export rimraf
+export rm
 export isDirectory
 export unquote
 export isQuoted
