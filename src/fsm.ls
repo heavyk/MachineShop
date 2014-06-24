@@ -421,17 +421,17 @@ class Fsm
 					task.emit \end, null, task.results, name
 					delete self._tasks[name]
 			#catch e
-			done_fn.dover = (times) ->
+			done_fn.dover = (times, error) ->
 				times = 2 if typeof times is \undefined
 				self.debug
-				done_fn.dover = done_fn._dover times
+				done_fn.dover = done_fn._dover times, error
 				done_fn.dover!
-			done_fn._dover = (times) ->
+			done_fn._dover = (times, error) ->
 				return ->
 					if times--
 						self.debug "running... task remaining lives: #{times}"
 						fn.call task.scope, done_fn
-					else done_fn new Error "retry failed for task '#msg'"
+					else done_fn error || new Error "retry failed for task '#msg'"
 
 			fn.call task.scope, done_fn
 			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
