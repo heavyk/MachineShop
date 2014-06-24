@@ -288,27 +288,40 @@ writeFile = (path, data, cb) ->
 exec = (cmd, opts, cb) ->
 	if typeof opts is \function
 		cb = opts
-		opts = {stdio: \inherit}
+
+	if typeof opts isnt \object
+		opts = {stdio: \pipe}
+	# unless opts.stdio
+	# 	opts.stdio = \silent
+
 
 	if debug.deep
-		var stack
+		var deep_err
 		try
 			throw new Error "exec '#cmd' #{DaFunk.stringify opts} failed"
-		catch error
-			stack := error.stack
+		catch err
+			deep_err := err
+
+	if opts.stdio is \silent
+		silent = true
+		opts.stdio = \pipe
 
 	opts.stdio = \pipe unless opts.stdio is \inherit
-	opts.env = process.env unless opts.env
+	opts.env = process.env if not opts.env
 	cmds = cmd.split ' '
+	# console.log "spawn: ", cmd, opts
 	p = spawn cmds.0, cmds.slice(1), opts
+	# console.log "p:", p
 	stdout = ''
 	stderr = ''
-	p.stdout.on \data (data) ->
-		stdout += data+''
-		process.stdout.write data unless opts.stdio is \silent
-	p.stderr.on \data (data) ->
-		stderr += data+''
-		process.stderr.write data unless opts.stdio is \silent
+	if p.stdout or true
+		p.stdout.on \data (data) ->
+			stdout += data+''
+			process.stdout.write data unless silent
+	if p.stderr
+		p.stderr.on \data (data) ->
+			stderr += data+''
+			process.stderr.write data unless silent
 	p.on \error (err) ->
 		opts.env = "process.env" if opts.env is process.env
 		debug "exec '#cmd' failed %s", DaFunk.stringify opts
@@ -317,8 +330,12 @@ exec = (cmd, opts, cb) ->
 		if code
 			debug "#cmd -> #code, stdout: '#stdout' stderr: '#stderr'"
 			if debug.deep
-				debug stack
-		cb code, stdout, stderr
+				debug err.stack
+				err = deep_err
+			else
+				err = new Error "exec '#cmd' exited with code #code"
+			err.code = code
+		cb err, stdout, stderr
 	return p
 
 searchDownwardFor = (file, dir, cb) ->
