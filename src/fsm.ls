@@ -370,7 +370,7 @@ class Fsm
 			fn = task.fns[i]
 			is_choke = if ~task.chokes.indexOf i then true else false
 			if typeof fn is \undefined or task.running >= task.concurrency or (is_choke and task.running isnt 0)
-				fsm.debug "task(%s): waiting \#%d (running:%s/%s) choke:%s - %s", name, i, task.running, task.concurrency, is_choke, typeof fn
+				fsm.debug "task(%s): waiting.. not starting \#%d (running:%s/%s) choke:%s - %s", name, i, task.running, task.concurrency, is_choke, typeof fn
 				return
 			# fsm.debug "task(%s): running %d %s", name, i, is_choke
 			start = new Date
@@ -416,7 +416,7 @@ class Fsm
 					process.nextTick -> task.next!
 				else if task.running is 0
 					if typeof task._cb is \function
-						fsm.debug "task(%s): completed all tasks %d/%d", name, task.complete, task.fns.length
+						fsm.debug "task(%s): completed all tasks %d/%d (#{typeof task._cb})", name, task.complete, task.fns.length
 						task._cb.call task.scope, null, task.results, name
 					task.emit \end, null, task.results, name
 					delete self._tasks[name]
@@ -433,7 +433,7 @@ class Fsm
 						fn.call task.scope, done_fn
 					else done_fn error || new Error "retry failed for task '#msg'"
 
-			fn.call task.scope, done_fn
+			process.nextTick -> fn.call task.scope, done_fn
 			if not is_choke and (task.running + task.complete) < task.fns.length then task.next!
 		task.emit \task:added task
 		if @_tasks[name]
@@ -525,14 +525,15 @@ Empathy =
 			cb if typeof process is \object and typeof process.versions is \object then process.versions.node else void
 		browser: (cb) ->
 			cb if typeof window is \object and typeof window.navigator is \object then window.navigator.version else void
-	'extend.initialize': !->
+	'also|initialize': !->
 		task = @task 'check derivitaves'
 		if typeof @_derivitaves is \undefined
 			@_derivitaves = {}
 		_.each @derivitaves, (d, k) ~>
+		# for k, d of @derivitaves
 			task.push "checking for #k" (done) ~>
-				self = @
 				d (v) ~>
+					@debug "d:ret:#k %s", v
 					if v
 						@_derivitaves[k] = v
 						@debug "found derivitave #k@#v"
@@ -544,7 +545,7 @@ Empathy =
 		@on \state:added (state) ->
 			@debug.todo "calculate the derivitaves"
 
-		task.end ->
+		task.end ~>
 			@emit \derivitaves:calculated
 			# event = (e)
 			# OPTIMIZE!!! - this needs to find all the derivitaves just once, then extend the functions
@@ -558,18 +559,19 @@ Empathy =
 						d.apply @, e.args
 			exec = (e) ->
 				_.each @_derivitaves, (v, derivitave) ~>
-					if (d = @states."#derivitave:#{@state}") and dd = d[e.type]
+					if (d = @states."#derivitave:#{@state}") and dd = d[e.cmd]
 						dd.apply @, e.args
-					if (d = @cmds) and dd = d."#derivitave:#{e.type}"
+					if (d = @cmds) and dd = d."#derivitave:#{e.cmd}"
 						dd.apply @, e.args
 
+			# process.nextTick ~>
 			@on \transition transition
 			@on \executed exec
 			# re-emit this to make sure to apply the derivitaves in the uninitialized state
 			if @state
 				@debug "re-emit #{@initialState}"
 				transition toState: @initialState, args: []
-				transition fromState: priorState, toState: @state, args: []
+				transition fromState: @priorState, toState: @state, args: []
 
 Fsm.Empathy = Empathy
 
