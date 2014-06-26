@@ -89,7 +89,9 @@ da_funk_callthrough = []
 empty_scope = {}
 da_funk_callthrough.i = 0
 
-da_funk = (obj, scope, refs) ->
+# horray for freedom functions, lol
+# soon they won't be able to be evil or eval. instead, they'll be evel... :)
+freedom = (obj, scope, refs) ->
 	return {} if typeof obj isnt \object
 	refs = if typeof refs isnt \object => {} else _.cloneDeep refs
 	# unless refs.name
@@ -110,7 +112,7 @@ da_funk = (obj, scope, refs) ->
 	# natevw/evel#20 and natevw/evel#21
 	# soon, it'll integrate
 	f = new Function """
-		if(this !== window && (typeof global !== 'object' || this !== global)) {
+		if((typeof window !== 'object' || this !== window) && (typeof global !== 'object' || this !== global)) {
 			for (var i in this) {
 				eval('var '+i+' = this[i];');
 			}
@@ -172,7 +174,7 @@ da_funk = (obj, scope, refs) ->
 			refs.name = basename+'.'+k
 			# console.log "k:", k, obj[k], v.__proto__ is Object
 			refs.__i++
-			da_funk obj[k], scope, refs
+			freedom obj[k], scope, refs
 			refs.__i--
 	obj
 
@@ -182,7 +184,7 @@ objectify = (str, scope, refs) ->
 	if str.0 is '/' or str.0 is '.'
 		str = ToolShed.readFile str
 
-	da_funk if typeof str is \string => JSON.parse str else str, scope, refs
+	freedom if typeof str is \string => JSON.parse str else str, scope, refs
 
 
 merge = (a, b) ->
@@ -208,11 +210,13 @@ merge = (a, b) ->
 improve = (a, b) ->
 	# c = {}
 	# keys = _.union Object.keys(a), Object.keys(b)
-	if typeof b is \object
+	console.log "improve: "
+	if typeof b is \object or typeof b is \function
 		keys = Object.keys(b)
 		for k in keys
 			_b = b[k]
 			_a = a[k]
+			console.log "k:", k
 			if b.hasOwnProperty k and k.0 isnt '_'
 				_k = k
 				a[k] = \
@@ -288,7 +292,7 @@ stringify.desired_order = (path) ->
 	| otherwise => []
 
 export stringify
-export da_funk
+export freedom
 export objectify
 export merge
 export extend
