@@ -300,15 +300,18 @@ class Fsm
 		task.chokes = []
 		task.fns = []
 		task.wait = ->
-			fsm.debug "task(%s): choke %d", name, task.fns.length
-			task.chokes.push task.fns.length
+			i = task.fns.length
+			if task.chokes[i - 1] isnt i
+				fsm.debug "task[%s][%d]: choke", name, i
+				task.chokes.push i
 			return task
 		task.choke = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			fsm.debug "task(%s): choke %d", name, task.fns.length
-			task.chokes.push task.fns.length
+			i = task.fns.length
+			fsm.debug "task[%s][%d]: choke", name, i
+			task.chokes.push i
 			task.fns.push fn
 			task.msgs.push txt
 			unless task._paused => task.next!
@@ -317,8 +320,8 @@ class Fsm
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			# fsm.debug "task(%s): add %d", name, task.fns.length
 			i = task.fns.length
+			fsm.debug "task[%s][%d]: add %d", name, i
 			task.fns.splice i, 0, fn
 			task.msgs.splice i, 0, txt
 			unless task._paused => task.next!
@@ -327,15 +330,15 @@ class Fsm
 			if typeof txt is \function
 				fn = txt
 				txt = null
-			# fsm.debug "task(%s): push %d: %s", name, task.fns.length, txt
 			i = task.fns.length
+			fsm.debug "task[%s][%d]: push - %s", name, i, txt
 			task.fns.push fn
 			task.msgs.push txt
 			unless task._paused => task.next!
 			return task
 		task.end = (cb) ->
 			#TODO: when starting, save the task list into a nice little queue to callback at the end, then when calling start again it should be executing
-			fsm.debug "task(%s): end", name
+			fsm.debug "task[%s][*]: end", name
 			task._cb = cb
 			if task.fns.length
 				task.next!
@@ -345,7 +348,7 @@ class Fsm
 					cb.call scope, null, task.results, name
 			return task
 		task.start = (cb) ->
-			fsm.debug "task(%s): start", name
+			fsm.debug "task[%s]: start", name
 			if typeof (_cb = task._cb) is \function
 				_task = self.task task.scope task.concurrency, task.name
 				_cb.call this, _task
@@ -370,15 +373,15 @@ class Fsm
 			fn = task.fns[i]
 			is_choke = if ~task.chokes.indexOf i then true else false
 			if typeof fn is \undefined or task.running >= task.concurrency or (is_choke and task.running isnt 0)
-				fsm.debug "task(%s): waiting.. not starting \#%d (running:%s/%s) choke:%s - %s", name, i, task.running, task.concurrency, is_choke, typeof fn
+				fsm.debug "task[%s][%d]: waiting.. not starting (running:%s/%s) choke:%s - %s", name, i, task.running, task.concurrency, is_choke, typeof fn
 				return
-			# fsm.debug "task(%s): running %d %s", name, i, is_choke
+			# fsm.debug "task[%s][%d]: running %s", name, i, is_choke
 			start = new Date
 			task.i++
 			task.running++
 			msg = task.msgs[i]
 
-			fsm.debug "task(%s): running... \#%s (complete:%d/%d) (%s)", name, i, task.complete, task.fns.length, task.msgs[i]
+			fsm.debug "task[%s][%d]: running... (complete:%d/%d) (%s)", name, i, task.complete, task.fns.length, task.msgs[i]
 			task.emit \running {
 				msg: msg
 				index: i
@@ -398,7 +401,7 @@ class Fsm
 				task.complete++
 				end = new Date
 				task.results[i] = res if res
-				fsm.debug "task(%s): done \#%s (complete:%d/%d running:%d) (%s)", name, i, task.complete, task.fns.length, task.running, task.msgs[i]
+				fsm.debug "task[%s][%d] done (complete:%d/%d running:%d) (%s)", name, i, task.complete, task.fns.length, task.running, task.msgs[i]
 				task.emit \complete, {
 					index: i
 					value: res
@@ -411,12 +414,11 @@ class Fsm
 					end: end
 					duration: end - start
 				}
-				# fsm.debug "task(%s): deciding... %d/%d `%s`", name, task.complete, task.fns.length, typeof task._cb
 				if (task.running + task.complete) < task.fns.length
 					process.nextTick -> task.next!
 				else if task.running is 0
 					if typeof task._cb is \function
-						fsm.debug "task(%s): completed all tasks %d/%d (#{typeof task._cb})", name, task.complete, task.fns.length
+						fsm.debug "task[%s][*]: completed all tasks %d/%d (#{typeof task._cb})", name, task.complete, task.fns.length
 						task._cb.call task.scope, null, task.results, name
 					task.emit \end, null, task.results, name
 					delete self._tasks[name]
