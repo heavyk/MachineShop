@@ -316,16 +316,6 @@ class Fsm
 			task.msgs.push txt
 			unless task._paused => task.next!
 			return task
-		task.add = (txt, fn) ->
-			if typeof txt is \function
-				fn = txt
-				txt = null
-			i = task.fns.length
-			fsm.debug "task[%s][%d]: add %d", name, i
-			task.fns.splice i, 0, fn
-			task.msgs.splice i, 0, txt
-			unless task._paused => task.next!
-			return task
 		task.push = (txt, fn) ->
 			if typeof txt is \function
 				fn = txt
