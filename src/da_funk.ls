@@ -91,6 +91,7 @@ da_funk_callthrough.i = 0
 
 # horray for freedom functions, lol
 # soon they won't be able to be evil or eval. instead, they'll be evel... :)
+# everyone has the right to basic funk freedom - but don't be eval
 freedom = (obj, scope, refs) ->
 	return {} if typeof obj isnt \object
 	refs = if typeof refs isnt \object => {} else _.cloneDeep refs
@@ -121,9 +122,9 @@ freedom = (obj, scope, refs) ->
 			var fn = new Function(args, body);
 			var self = this;
 			var f = function() {
-				// try {
+				try {
 					return fn.apply(this, arguments);
-				/* } catch(e) {
+				} catch(e) {
 					var s = (e.stack+'').split('\\n')
 					//var i = 1;
 					var fn_s = fn.toString().split('\\n');
@@ -139,7 +140,7 @@ freedom = (obj, scope, refs) ->
 					//debugger;
 					//console.error("Exception occured in "+name, e.stack, fn)
 					//throw e;
-				} */
+				}
 			}
 			return f
 		}
@@ -210,7 +211,6 @@ merge = (a, b) ->
 improve = (a, b) ->
 	# c = {}
 	# keys = _.union Object.keys(a), Object.keys(b)
-	console.log "improve: "
 	if typeof b is \object or typeof b is \function
 		keys = Object.keys(b)
 		for k in keys
