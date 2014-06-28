@@ -294,7 +294,7 @@ exec = (cmd, opts, cb) ->
 	# unless opts.stdio
 	# 	opts.stdio = \silent
 
-
+	debug "exec '%s'", cmd
 	if debug.deep
 		var deep_err
 		try
@@ -429,7 +429,7 @@ set_obj_path = (path, obj, val, split) ->
 		paths = path.substr i+1, ii-1
 		for p in path = paths.split ','
 			path = p.trim!
-			set_obj_path "#{path.substr 0, i}#p#{path.substr i+1}", obj, val[p]
+			set_obj_path "#{path.substr 0, i}#p#{path.substr ii+1}", obj, val[p]
 		return
 	if (paths = path.split '.').length
 		subobj = obj
