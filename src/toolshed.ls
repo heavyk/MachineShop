@@ -49,7 +49,7 @@ Debug = (namespace) ->
 		if typeof write isnt \function
 			write = _write
 		else if typeof postfix isnt \string
-				postfix = ''
+			postfix = ''
 
 		return !->
 			msg = printf ...
@@ -76,8 +76,10 @@ Debug = (namespace) ->
 					i += 1
 				postfix += "\n    at #{stack[i].trim!}"
 			write msg, channel, prefix, postfix
-		debug.error = do_append_msg "[ERROR] #{namespace}: ", \error
-		debug.log = do_append_msg "[LOG] #{namespace}: ", \log
+		debug.error = do_append_msg \error, "[ERROR] #{namespace}: ", (msg, channel, prefix, postfix, _write) ->
+			if not process.env.DEBUG_NO_DEBUGGER => debugger
+			_write ...
+		debug.log = do_append_msg \log, "[LOG] #{namespace}: "
 		start = ->
 			# path := Path.join HOME_DIR, '.ToolShed', "#{namespace}-debug.log"
 			path := Path.join HOME_DIR, '.ToolShed', "debug.log"
@@ -102,7 +104,7 @@ Debug = (namespace) ->
 		debug.todo = do_append_msg \todo, " [INFO - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info ('[TODO] ' + msg + postfix)
 		debug.warn = do_append_msg \warn, " [WARN #{namespace}]: ", (msg, channel, prefix, postfix) -> console.warn (msg + postfix)
 		debug.info = do_append_msg \info, " [INFO #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info (msg + postfix)
-		debug.error = do_append_msg \error, " [ERROR #{namespace}]: ", (msg, channel, prefix, postfix) -> console.error (msg + postfix)
+		debug.error = do_append_msg \error, " [ERROR #{namespace}]: ", (msg, channel, prefix, postfix) -> console.error (msg + postfix); debugger
 		debug.log = do_append_msg \log, " [LOG #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (msg + postfix)
 		debug.assert = assert
 		debug.namespace = ~
@@ -400,47 +402,83 @@ debug_fn = (namespace, cb, not_fn) ->
 			throw new Error "can't debug a function this not really a function"
 
 
-get_obj_path = (path, obj) ->
-	assert typeof path is \string
-	if typeof obj is \undefined
-		obj = this
-	path = path.split '.'
+# BIKESHED: I really would rather obj as the first param: (obj, path, ...)
+# OPTIMIZE! - have a look at using indexOf and substr instead of path.split - I think that will be the fastest.
+# these will be the typed, signatures:
+# get_obj_path = (Array path, Function^Object obj) ->
+# get_obj_path = (String path, Function^Object obj, String split = '/') ->
+get_obj_path = (path, obj, split) ->
+	if typeof path is \string
+		if typeof split is \undefined => split = '.' # TODO: this should really be: '/'
+		if typeof split isnt \string => throw new Error "arg{3:split} is supposed to be a string"
+		paths = path.split split
+	else if Array.isArray path
+		paths = path # .slice 0 # - slice isn't necessary because we don't modify the array
+	else
+		throw new Error "arg{1:path} is supposed to be of type String or Array"
+	if typeof obj isnt \function and typeof obj isnt \object => throw new Error "arg{2:obj} is supposed to be of type Object or Function"
 	i = 0
-	while i < path.length
-		obj = obj[path[i++]]
-	obj
-# I think the one above is the fastest.
-# I also think that the above function can be optimized by using indexOf and substr -- another time I suppose :)
-#OPTIMIZE! - jsperf anyone? (this is an almost useless optimization and should be added to Current too. Current shlould be fastest general lib - like lodash)
-#get_in_obj2 = (obj, str) -> (str.split '/').reduce ((o, x) -> o[x]), obj
-# this is now possible:
-#   ToolShed.set_obj_path "property.{DaFunk, ToolShed}", my_obj, require \MachineShop
-# TODO: add types to LiveScript:
-# set_obj_path = (String path, Function^Object obj, !undefined val, String split = '/') ->
-set_obj_path = (path, obj, val, split) ->
-	if typeof path isnt \string => throw new Error "arg{1:path} is supposed to be a string"
-	if typeof obj isnt \function and typeof obj isnt \object => throw new Error "arg{2:val} must be an Object or a Function"
-	if typeof val is \undefined => throw new Error "arg{3:val} cannot be undefined"
-	if typeof split is \undefined => split = '/'
-	if typeof split isnt \string => throw new Error "arg{4:split} is supposed to be a string"
-	if typeof val is \undefined
-		obj = this
-	if ~(i = path.indexOf '{') and ~(ii = path.lastIndexOf '}')
-		paths = path.substr i+1, ii-1
-		for p in path = paths.split ','
-			path = p.trim!
-			set_obj_path "#{path.substr 0, i}#p#{path.substr ii+1}", obj, val[p]
-		return
-	if (paths = path.split '.').length
-		subobj = obj
-		while paths.length > 1
-			subobj = obj[p = paths.shift!trim!]
-			if typeof subobj is \undefined
-				subobj = {}
-				subobj[p] = val
-				# obj[p] = subobj
-		obj[p = paths.shift!trim!] = val
+	_obj = obj
+	while i < paths.length and _obj
+		_obj = _obj[paths[i++]]
+	_obj
 
+# TODO: document these functions speed using jsperf and then put the urls in here for quick reference (also keep them locally in origin/*.jsperf.ls)
+# example setup:
+# paths = []
+# obj = {}
+# for i to 100
+# 	p = []
+# 	for d to (Math.ceil Math.random! * 5)
+# 		p.push Math.random!toString 32 .substr 2
+# 	paths.push (pp = p.join '.')
+# 	ToolShed.set_obj_path pp, obj
+# this is most likely the slowest
+# get_in_obj2 = (obj, str) -> (str.split '/').reduce ((o, x) -> o[x]), obj
+# this is now possible:
+#   ToolShed.set_obj_path "property.{DaFunk,ToolShed}", my_obj, require \MachineShop
+# TODO: add types to LiveScript:
+# set_obj_path = (Array path, Function^Object obj, !undefined val, String subsplit = ',') ->
+# set_obj_path = (String path, Function^Object obj, !undefined val, String split = '/', String subsplit = ',') ->
+# BIKESHED: I really would rather obj as the first param: (obj, path, val, ...)
+set_obj_path = (path, obj, val, split, subsplit) ->
+	if typeof path is \string
+		if typeof split is \undefined => split = '.' # TODO: this should really be: '/'
+		if typeof split isnt \string => throw new Error "arg{4:split} is supposed to be a string"
+		paths = path.split '.'
+	else if Array.isArray path
+		subsplit = split
+		paths = path.slice 0
+	else throw new Error "arg{1:path} is supposed to be of type String or Array"
+	if typeof obj isnt \function and typeof obj isnt \object => throw new Error "arg{2:obj} is supposed to be of type Object or Function"
+	if typeof val is \undefined => throw new Error "arg{3:val} cannot be undefined"
+	if typeof subsplit is \undefined => subsplit = ',' # TODO: this potentially could be: '|'
+	if typeof subsplit isnt \string => throw new Error "arg{5:subsplit} is supposed to be a string"
+	if paths.length
+		subobj = obj
+		while paths.length # > 1
+			path = paths.shift!trim!
+			if ~(i = path.indexOf '{') and ~(ii = path.lastIndexOf '}')
+				subpaths = path.substr i+1, ii-1
+				for p in subpaths.split subsplit
+					# this is largely untested, though I know that it 'works' ... lol, write tests dude!
+					# debugger
+					p = (path.substr 0, i) + (p.trim!) + (path.substr ii+1)
+					pp = [p] ++ paths
+					set_obj_path pp, obj, get_obj_path pp, val
+				return
+
+			if paths.length is 0
+				subobj[path] = val
+				subobj[path+'_____________dynset'] = true
+				obj._dynset = true
+			else
+				_subobj = subobj[path]
+				if typeof _subobj is \undefined
+					debugger
+					_subobj = {}
+					subobj[path] = _subobj
+				subobj = _subobj
 	else
 		# TODO: add a @debug.fixme "you called set_obj_path without a resolvable path"
 		debug.warn "could not find a path to set to. this is probably not intended"
