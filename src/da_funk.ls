@@ -98,6 +98,7 @@ freedom = (obj, scope, refs) ->
 	# unless refs.name
 	# 	debugger
 	basename = refs.name or ''
+	basepath = refs.path
 	if typeof refs.__i is \undefined
 		refs.__i = 0
 	# else if refs.__i++ > (refs.deep || 10)
@@ -112,71 +113,81 @@ freedom = (obj, scope, refs) ->
 	# this is obsolete. see duralog's work on evel:
 	# natevw/evel#20 and natevw/evel#21
 	# soon, it'll integrate
+	# additionally, this should be lazy... don't actually compile the function until it's necessary
+	# or rather, I should just check to see if xxx.js exists and if it does, recompile the function. this way I can just update the function ref and it'll recompile itself.
+	# this could potentially be more performant as well. look into it
 	f = new Function """
+		var scope = this;
 		if((typeof window !== 'object' || this !== window) && (typeof global !== 'object' || this !== global)) {
 			for (var i in this) {
-				eval('var '+i+' = this[i];');
+				eval(i+' = this[i];');
 			}
 		}
-		return function(name, refs, args, body) {
-			var fn = new Function(args, body);
-			var self = this;
+		return function(name, refs, obj) {
+			var fn, fn_txt;
 			var f = function() {
 				try {
+					if(typeof (fn_txt = obj[name+'.js']) === 'string') {
+						//console.log("generating function...", name);
+						var i = fn_txt.indexOf('(');
+						var ii = fn_txt.indexOf(')');
+						var j = fn_txt.indexOf('{');
+						var jj = fn_txt.lastIndexOf('}');
+						var args = fn_txt.substring(++i, ii).replace(new RegExp(' ', 'g'), '');
+						var body = '"use strict"\\n"' + refs.name + '"\\n' + fn_txt.substring(++j, jj).trim();
+						fn = new Function(args, body);
+						delete obj[name+'.js'];
+					}
 					return fn.apply(this, arguments);
 				} catch(e) {
 					var s = (e.stack+'').split('\\n')
-					//var i = 1;
-					var fn_s = fn.toString().split('\\n');
-					var line = /\\:([0-9]+)\\:([0-9]+)\\)$/.exec(s[1])[1] * 1;
-					var sp = "          ".substr(2, (fn_s.length+'').length);
-					var block = []
-					fn_s.map(function(s, i) {
-						i++;
-						//console.log(i, line, line < (i+3), line, '<', (i+3), line > (i-3), line, '>', (i-3))
-						if(line < (i+3) && line > (i-3)) block.push((i++)+":"+sp+s)
-					}).join('\\n')
-					console.error(s[0]+"\\n("+refs.name+" line: "+line+")\\n"+block.join('\\n'))
-					//debugger;
-					//console.error("Exception occured in "+name, e.stack, fn)
-					//throw e;
+					if(fn) {
+						var fn_s = fn.toString().split('\\n');
+						var line = /\\:([0-9]+)\\:([0-9]+)\\)$/.exec(s[1])[1] * 1;
+						var sp = "          ".substr(2, (fn_s.length+'').length);
+						var block = []
+						fn_s.map(function(s, i) {
+							i++;
+							if(line < (i+3) && line > (i-3)) block.push((i++)+":"+sp+s)
+						}).join('\\n')
+						console.error(s[0]+"\\n("+refs.name+" line: "+line+")\\n"+block.join('\\n'))
+					} else {
+						throw e;
+					}
 				}
 			}
 			return f
 		}
 		"""
 	callthrough = f.call scope
-	#_.each obj, (v, k) ->
 	da_funk_scopes.push obj
 	for k in (keys = Object.keys obj)
 		v = obj[k]
 		# I choose 8 because it's unlikely that an unintended value will be of value '8'
 		# it takes up only one byte, and it looks like infinaty
 		# it could be any number though...
+		# OPTIMIZE: this might be able to be improved further by making this a getter, then overwrite the getter when setting it to callthrough
 		if v is 8 and typeof (fn = obj[k+'.js']) is \string
 			i = fn.indexOf '('
 			ii = fn.indexOf ')'
 			j = fn.indexOf '{'
 			jj = fn.lastIndexOf '}'
-			args = fn.substring(++i, ii).replace(regex_space, '')
-			# body = fn.substring(++j, jj).trim!
+			refs.path = if basepath => basepath+'.'+k else k
 			refs.name = basename+'.'+k
+			args = fn.substring(++i, ii).replace(regex_space, '')
+			body = '"use strict"\n"' + basename + '"\n' + fn.substring(++j, jj).trim!
 			# console.log ":args:", args
 			# console.log ":body:", body
 			# console.log ":orig:", fn
 			# console.log "'#body'"
-			body = '"use strict"\n"' + basename + '"\n' + fn.substring(++j, jj).trim!
-			# console.log "callthrough:", refs.name, callthrough, da_funk_callthrough
-			obj[k] = callthrough(k, refs, args, body, new Function(args, body))
-
-			# delete obj[k+'.js']
-		# else if _.isObject v
+			obj[k] = callthrough(k, refs, obj)
 		else if v and typeof v is \object and v isnt obj and refs.__i <= (refs.deep || 4) and v.__proto__ is ({}).__proto__
+			refs.path = if basepath => basepath+'.'+k else k
 			refs.name = basename+'.'+k
 			# console.log "k:", k, obj[k], v.__proto__ is Object
-			refs.__i++
+			++refs.__i
 			freedom obj[k], scope, refs
-			refs.__i--
+			--refs.__i
 	obj
 
 objectify = (str, scope, refs) ->
