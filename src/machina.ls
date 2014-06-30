@@ -1,5 +1,6 @@
 ToolShed = require './toolshed'
-{ Fsm, Fabuloso, collective, pipeline } = require './fsm'
+DaFunk = require './da_funk'
+{ Fsm, collective, pipeline } = require './fsm'
 
 # later, in the future, integrate this with [node] webworker threads
 # or maybe something like thread.js
@@ -11,7 +12,7 @@ class Machina extends Fsm
 	(name) ->
 		# TODO: calculate cores and shit
 		@fsms = []
-		ToolShed.extend @, Fabuloso
+		DaFunk.extend @, Fsm.Empathy
 		super "Machina"
 
 	eventListeners:

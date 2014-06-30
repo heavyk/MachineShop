@@ -22,7 +22,7 @@ collective = {}
 # states:
 # 	'node@>=0.11:uninitialized':
 # 		onenter: ->
-# I will need to wait for precalculated derivitaves are done to do this, otherwise I'd have to call Semver.satisfies for every state (not cool!)
+# I will need to wait for precalculated derivatives are done to do this, otherwise I'd have to call Semver.satisfies for every state (not cool!)
 
 
 # originally this was based off of
@@ -132,7 +132,7 @@ class Fsm
 				}
 				@emit.call @, \executing, emit_obj
 				ret = fn.apply @, if handler is \* => args else args1
-				@debug "exec(%s) called:ret (%s)", handler, if typeof ret is \object => \object else ret
+				@debug "exec(%s) called:ret (%s)", handler, if typeof ret is \object => \object else if typeof ret is \string and ret.length > 100 => (ret.substr 0, 97)+' ...' else ret
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
 				@emit.call @, "executed:#handler", emit_obj
@@ -507,10 +507,10 @@ class Fsm
 	#return new Fsm name, options
 
 Empathy =
-	derivitave: (name, version) ->
-		if version then Semver.satisfies version, @_derivitaves[name]
-		else @_derivitaves[name]
-	derivitaves:
+	derivative: (name, version) ->
+		if version then Semver.satisfies version, @_derivatives[name]
+		else @_derivatives[name]
+	derivatives:
 		'node-webkit': (cb) ->
 			cb if typeof process is \object and typeof process.versions is \object then process.versions.'node-webkit' else void
 		node: (cb) ->
@@ -518,51 +518,58 @@ Empathy =
 		browser: (cb) ->
 			cb if typeof window is \object and typeof window.navigator is \object then window.navigator.version else void
 	'also|initialize': !->
-		task = @task 'check derivitaves'
-		if typeof @_derivitaves is \undefined
-			@_derivitaves = {}
-		_.each @derivitaves, (d, k) ~>
-		# for k, d of @derivitaves
+		task = @task 'check derivatives'
+		if typeof @_derivatives is \undefined
+			@_derivatives = {}
+			@__derivatives = []
+		_.each @derivatives, (d, k) ~>
+		# for k, d of @derivatives
 			task.push "checking for #k" (done) ~>
 				d (v) ~>
 					@debug "d:ret:#k %s", v
 					if v
-						@_derivitaves[k] = v
-						@debug "found derivitave #k@#v"
+						@_derivatives[k] = v
+						@__derivatives.push k
+						@debug "found derivative #k@#v"
 					done void, v
-		@on \derivitave:remove ->
-			@debug.todo "go through each one and remove the derivitave version from the extended function"
-		@on \derivitave:add ->
-			@debug.todo "go through each one and add the derivitave versions to the extended function list if it's not already"
+		@on \derivative:remove ->
+			@debug.todo "go through each one and remove the derivative version from the extended function"
+		@on \derivative:add ->
+			@debug.todo "go through each one and add the derivative versions to the extended function list if it's not already"
 		@on \state:added (state) ->
-			@debug.todo "calculate the derivitaves"
+			@debug.todo "calculate the derivatives"
 
 		task.end ~>
-			@emit \derivitaves:calculated
+			@emit \derivatives:calculated
 			# event = (e)
-			# OPTIMIZE!!! - this needs to find all the derivitaves just once, then extend the functions
+			# OPTIMIZE!!! - this needs to find all the derivatives just once, then extend the functions
 			# for now though, I'm just looping through them all every transition/cmd (slow)
-			# though for derivitave events, this will be pretty necessary
-			transition = (e) ->
-				_.each @_derivitaves, (v, derivitave) ~>
-					if e.fromState and d = @states[e.fromState]."#derivitave:onexit"
+			# though for derivative events, this will be pretty necessary
+			transition = (e) ~>
+				# _.each @_derivatives, (v, derivative) ~>
+				for derivative in @__derivatives
+					v = @_derivatives[derivative]
+					if e.fromState and d = @states[e.fromState]."#derivative:onexit"
 						d.apply @, e.args
-					if d = @states[e.toState]."#derivitave:onenter"
+					if d = @states[e.toState]."#derivative:onenter"
 						d.apply @, e.args
-			exec = (e) ->
-				_.each @_derivitaves, (v, derivitave) ~>
-					if (d = @states."#derivitave:#{@state}") and dd = d[e.cmd]
+			exec = (e) ~>
+				# _.each @_derivatives, (v, derivative) ~>
+				for derivative in @__derivatives
+					v = @_derivatives[derivative]
+					if (d = @states."#derivative:#{@state}") and dd = d[e.cmd]
 						dd.apply @, e.args
-					if (d = @cmds) and dd = d."#derivitave:#{e.cmd}"
+					if (d = @cmds) and dd = d."#derivative:#{e.cmd}"
 						dd.apply @, e.args
 
 			# process.nextTick ~>
 			@on \transition transition
 			@on \executed exec
-			# re-emit this to make sure to apply the derivitaves in the uninitialized state
+			# re-emit this to make sure to apply the derivatives in the uninitialized state
 			if @state
 				@debug "re-emit #{@initialState}"
-				transition toState: @initialState, args: []
+				if @initialState isnt @state
+					transition toState: @initialState, args: []
 				transition fromState: @priorState, toState: @state, args: []
 
 Fsm.Empathy = Empathy
