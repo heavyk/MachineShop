@@ -110,12 +110,10 @@ freedom = (obj, scope, refs) ->
 	# console.error "da_funk", scope
 
 
-	# this is obsolete. see duralog's work on evel:
+	# !some! this is obsolete. see duralog's work on evel:
 	# natevw/evel#20 and natevw/evel#21
-	# soon, it'll integrate
-	# additionally, this should be lazy... don't actually compile the function until it's necessary
-	# or rather, I should just check to see if xxx.js exists and if it does, recompile the function. this way I can just update the function ref and it'll recompile itself.
-	# this could potentially be more performant as well. look into it
+	# soon, it'll integrate to provide a secure environment for execution
+	# OPTIMIZE: maybe we could cut down on the function signature doing all the parsing in a different function..
 	f = new Function """
 		var scope = this;
 		if((typeof window !== 'object' || this !== window) && (typeof global !== 'object' || this !== global)) {
@@ -140,10 +138,12 @@ freedom = (obj, scope, refs) ->
 					}
 					return fn.apply(this, arguments);
 				} catch(e) {
+					console.log(e.stack)
 					var s = (e.stack+'').split('\\n')
 					if(fn) {
-						var fn_s = fn.toString().split('\\n');
-						var line = /\\:([0-9]+)\\:([0-9]+)\\)$/.exec(s[1])[1] * 1;
+						var line, fn_s = fn.toString().split('\\n');
+						line = (/\\:([0-9]+)\\:([0-9]+)\\)$/.exec(s[1]));
+						line = line ? line[1] * 1 : 'unknown';
 						var sp = "          ".substr(2, (fn_s.length+'').length);
 						var block = []
 						fn_s.map(function(s, i) {
@@ -151,7 +151,9 @@ freedom = (obj, scope, refs) ->
 							if(line < (i+3) && line > (i-3)) block.push((i++)+":"+sp+s)
 						}).join('\\n')
 						console.error(s[0]+"\\n("+refs.name+" line: "+line+")\\n"+block.join('\\n'))
+						//throw e;
 					} else {
+						console.error("function was not able to be found", refs)
 						throw e;
 					}
 				}
@@ -168,18 +170,20 @@ freedom = (obj, scope, refs) ->
 		# it could be any number though...
 		# OPTIMIZE: this might be able to be improved further by making this a getter, then overwrite the getter when setting it to callthrough
 		if v is 8 and typeof (fn = obj[k+'.js']) is \string
-			i = fn.indexOf '('
-			ii = fn.indexOf ')'
-			j = fn.indexOf '{'
-			jj = fn.lastIndexOf '}'
+			# i = fn.indexOf '('
+			# ii = fn.indexOf ')'
+			# j = fn.indexOf '{'
+			# jj = fn.lastIndexOf '}'
 			refs.path = if basepath => basepath+'.'+k else k
 			refs.name = basename+'.'+k
-			args = fn.substring(++i, ii).replace(regex_space, '')
-			body = '"use strict"\n"' + basename + '"\n' + fn.substring(++j, jj).trim!
+			# args = fn.substring(++i, ii).replace(regex_space, '')
+			# body = '"use strict"\n"' + basename + '"\n' + fn.substring(++j, jj).trim!
 			# console.log ":args:", args
 			# console.log ":body:", body
 			# console.log ":orig:", fn
 			# console.log "'#body'"
+			delete obj[k+'.js']
+			Object.defineProperty obj, k+'.js', enumerable: false, value: fn
 			obj[k] = callthrough(k, refs, obj)
 		else if v and typeof v is \object and v isnt obj and refs.__i <= (refs.deep || 4) and v.__proto__ is ({}).__proto__
 			refs.path = if basepath => basepath+'.'+k else k

@@ -12,8 +12,8 @@ debug = Debug 'Fsm'
 
 slice = [].slice
 
-pipeline = Postal.channel \Machina
-collective = {}
+# pipeline = Postal.channel 'fsm://'
+# collective = {}
 
 # for state recording, I think that this can be improved on quite a bit...
 # I'd like to see a state progression like this [/state] -> saving -> saved -> [/state]
@@ -38,15 +38,16 @@ class Fsm
 		# 	name += "(#id)"
 		# else options = id
 
+		@machina = Machinator.get name
 		args1 = slice.call &, 1
 		do
-			uniq = Math.random!toString 32 .substr 2
+			xid = Math.random!toString 32 .substr 2
 			if typeof name is \string
-				name += '.fsm.'+uniq
+				name += '.fsm.'+xid
 			else
 				options = name
-				name = 'fsm.'+uniq
-		while collective[name]
+				name = 'fsm.'+xid
+		while @machina.collective[xid]
 
 		@debug = Debug name
 
@@ -66,6 +67,7 @@ class Fsm
 		if typeof @initialState is \undefined
 			@initialState = 'uninitialized'
 
+		self = this
 		if (t = typeof @initialize) isnt \undefined => switch t
 		| \function =>
 			@initialize.apply @, args1
@@ -80,7 +82,7 @@ class Fsm
 						fn.apply @, args1
 
 		collective[name] = @
-		pipeline.publish \Fsm:added, {id: name}
+		# pipeline.publish \Fsm:added, {id: name}
 		if not @state and @initialState isnt false
 			@debug "fsm transition initialState: #{@initialState}"
 			@transition @initialState
@@ -88,21 +90,23 @@ class Fsm
 
 	muteEvents: false
 	concurrency: Infinity
-	_initialized: false
+	_awake: false
 	once_initialized: (cb) ~>
+		# throw new Error "deprecated. instead, use 'awakened'. you will also need to change your states as well. real states start with '/' and transition states do not"
+		throw new Error "deprecated. instead, use 'begin'. you will also need to change your states as well. real states start with '/' and transition states do not"
+	begin: (cb) ~>
 		assert this instanceof Fsm
-		@debug "once_initialized... %s", @_initialized
+		@debug "begin... %s", @_awake
 		if typeof cb is \function
-			if @_initialized
+			if @_awake
 				cb.call @
 			else
-				# @deferUntilNextHandler cb
 				@eventQueue.push {
-					type: \deferred
+					type: \awaken
 					notState: @initialState
 					cb: cb
 				}
-		@_initialized
+		@_awake
 	reset: ~>
 		@state = void
 		@initialize.call @ if typeof @initialize is \function
@@ -136,7 +140,7 @@ class Fsm
 				emit_obj.ret = ret
 				@emit.call @, \executed, emit_obj
 				@emit.call @, "executed:#handler", emit_obj
-				@processQueue \next-exec
+				@processQueue \next-exec if @eventQueue.length
 				execd++
 			if typeof (fn = states[state][handler]) is \string
 				handler = fn
@@ -170,6 +174,10 @@ class Fsm
 	transition: (newState) !->
 		if typeof newState isnt \string
 			newState = newState+''
+		if @state and @state.0 isnt '/' and @state isnt @initialState
+			console.log "WARNING #{@namespace} is trying to transition while already in a transition state: #{@state}"
+			# TODO -- instead of transitionSoon, add it to the eventQueue
+			return @transitionSoon ...
 		if @inTransition
 			return @transitionSoon ...
 		@debug "fsm: transition %s -> %s", @state, newState
@@ -189,11 +197,6 @@ class Fsm
 				# process.nextTick ~>
 				if @states[newState].onenter
 					@states[newState].onenter.apply @, args1
-				# if @targetReplayState is newState then @processQueue \next-transition
-				if oldState is @initialState and not @_initialized
-					@debug "initialzed! in %s", newState
-					@_initialized = true
-
 				@debug "fsm: post-transition %s -> %s", oldState, newState
 				@emit.apply @, ["state:#newState"] ++ args1
 				@emit.call @, \transition, {
@@ -201,8 +204,25 @@ class Fsm
 					toState: newState
 					args: args = args1
 				}
-				@processQueue.call this, \next-transition
-				@processQueue.call this, \deferred
+				if @eventQueue.length
+					# OPTIMIZE: this can be simplified for performance reasons... laziness has been the reason
+					#  - a simple switch case on the loop through the eventQueue will be a whole lot faster.
+					@processQueue.call this, \next-transition
+					@processQueue.call this, \deferred
+					# @processQueue.call this, \awaken
+				# if not @_awake
+				# 	console.log "oldState:", oldState, "newState:", newState, @_awake
+				# 	console.log "initialState:", @initialState
+				if not @_awake and newState.0 is '/'
+					# num = 0
+					# for evt in @eventQueue
+					# 	if evt.type is \awaken
+					# 		num += 1
+					# console.log "waking up #{@namespace}... (awaken:#num)"
+					# @debug "initialzed! in %s - (deferred awaken events:%d)", newState, num
+					@debug "initialzed! in %s", newState
+					@processQueue.call this, \awaken
+					@_awake = newState
 				@inTransition = null
 			else
 				@debug "attempted to transition to an invalid state: %s", newState
@@ -213,20 +233,30 @@ class Fsm
 					args: args1
 				}
 	processQueue: (type) !->
+		# TODO: in the future, with AliveScript, 'assert' -> 'indicate' and 'indicate' becomes a keyword.
+		#  - (basically, it's the same as an if-statement but conditionally compiles in, only for debug mode)
+		#  - it'll eventually work into the type system too, and ensure types...
+		#  >> indicate typeof @state is \string
+		assert.equal typeof @state, \string
+		# if type is \deferred and @state.0 isnt '/' then return
+		if type is \deferred and (not @state or (typeof @state is \string and @state.0 isnt '/')) then return
 		filterFn = if type is \next-transition
 			(item) ~> item.type is \next-transition
+		else if type is \awaken
+			(item, i) ~> item.type is \awaken and (not @_awake and item.notState isnt @state and @state and @state.0 is '/')
 		else if type is \deferred
 			(item, i) ~> item.type is \deferred and ((item.untilState and item.untilState is @state) or (item.notState and item.notState isnt @state))
 		else
 			(item) ~> item.type is \next-exec
 		len_before = @eventQueue.length
 		toProcess = _.filter @eventQueue, filterFn
+		# console.log "#{@namespace} processQueue: #type", toProcess
 
 		if toProcess.length
 			@debug "processQueue:#type(#{toProcess.length})"
 		_.each toProcess, !(item) ~>
 			if filterFn item, i
-				fn = if item.type is \deferred => item.cb else @exec
+				fn = if item.type is \deferred or item.type is \awaken => item.cb else @exec
 				fn.apply @, item.args
 				i = @eventQueue.indexOf item
 				@eventQueue.splice i, 1
@@ -383,7 +413,9 @@ class Fsm
 			done_fn = (err, res) ->
 				task.running--
 				if err
+					fsm.debug "task[%s][%d] !!abort!! error (complete:%d/%d running:%d) (%s)", name, i, task.complete, task.fns.length, task.running, task.msgs[i]
 					task._paused = true
+					console.log "error in:", done_fn.op || fn.toString!
 					if typeof task._cb is \function
 						task._cb.call task.scope, err
 					task.emit \error, err
@@ -404,8 +436,11 @@ class Fsm
 					end: end
 					duration: end - start
 				}
-				if (task.running + task.complete) < task.fns.length
-					process.nextTick -> task.next!
+				if (task.running + task.complete) < task.fns.length and task.running <= task.concurrency
+					setTimeout ->
+						task.next!
+					, 0
+					# process.nextTick -> task.next!
 				else if task.running is 0
 					if typeof task._cb is \function
 						fsm.debug "task[%s][*]: completed all tasks %d/%d (#{typeof task._cb})", name, task.complete, task.fns.length
@@ -415,14 +450,24 @@ class Fsm
 			#catch e
 			done_fn.dover = (times, error) ->
 				times = 2 if typeof times is \undefined
-				self.debug
 				done_fn.dover = done_fn._dover times, error
 				done_fn.dover!
-			done_fn._dover = (times, error) ->
-				return ->
+			done_fn._dover = (times, timeout, error) ->
+				switch &.length
+				| 0 =>
+					times = 2
+					fallthrough
+				| 1 =>
+					if typeof timeout isnt \number
+						error = timeout
+						timeout = 1000
+					fallthrough
+				return (err) ->
 					if times--
 						self.debug "running... task remaining lives: #{times}"
-						fn.call task.scope, done_fn
+						setTimeout ->
+							fn.call task.scope, done_fn
+						, timeout
 					else done_fn error || new Error "retry failed for task '#msg'"
 
 			process.nextTick -> fn.call task.scope, done_fn
@@ -474,6 +519,7 @@ class Fsm
 			real_cb = void
 		listeners = @eventListeners[eventName]
 		# this is a hackedy hack to make sure we're not modifying the prototype
+		# we'll need to change this soon to become browser compatible... (soon, hehehe)
 		if @eventListeners is @__proto__.eventListeners
 			@eventListeners = _.cloneDeep @eventListeners
 		@eventListeners[eventName] = [] if not listeners
@@ -489,10 +535,14 @@ class Fsm
 			off: ~> @off eventName, callback
 		}
 	once: (eventName, callback) ~>
-		evt = @on eventName, callback, !~>
-			evt.cb ...
-			process.nextTick ~>
-				evt.off eventName, callback
+		if eventName is \awakened
+			console.log "special..."
+		else
+			evt = @on eventName, callback, !~>
+				evt.cb ...
+				process.nextTick ~>
+					evt.off eventName, callback
+		return this
 	off: (eventName, callback) ->
 		if not eventName
 			@eventListeners = {}
@@ -576,8 +626,8 @@ Fsm.Empathy = Empathy
 
 export Empathy
 export Fsm
-export pipeline
-export collective
+# export pipeline
+# export collective
 
 /*
 #TODO: convert this into a real test...

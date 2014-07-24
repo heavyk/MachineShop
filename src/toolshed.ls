@@ -3,7 +3,8 @@ Fs = require \fs
 Path = require \path
 Url = require \url
 assert = require \assert
-spawn = require \child_process .spawn
+_exec = require \child_process .exec
+_spawn = require \child_process .spawn
 mkdirp = require \mkdirp
 Rimraf = require \rimraf
 printf = require \printf
@@ -23,18 +24,105 @@ v8_mode = \Release
 # needs to feel something like co
 # https://github.com/jmar777/suspend
 
-Debug = (namespace) ->
-	#TODO: make this a verse/fsm which maintains the list of debugs
-	unless path = Debug.namespaces[namespace]
+# parse_dbg_params = (__params) ->
+# 	params = {}
+# 	if __params.0 is '{'
+# 		try
+# 			_params = JSON.parse __params
+# 			_.each _params, (path, key) ->
+# 				params[path] = key matchBase: true
+# 		catch e
+# 			console.error "could not parse params... pretty bad ... silently failing"
+
+# 			# minimatch
+
+
+
+# TODO: if it's a queriable protocol, allow for debug queries (eg. maybe this would be better as a separate thing)
+Debug = (namespace, _uri) ->
+	# ??? - allow channels such as [todo,warn,info,etc] to be defined by DaFunk.freedom (maybe not from an env variable, but perhaps something else like HOME_DIR/.ToolShed/console.debug.ls) ???
+
+	# TODO: debug path checking with minimatch
+	if not Debug.matcher and typeof (match_str = process.env.DEBUG) is \string
+		Debug.matcher = new require \minimatch .Minimatch match_str, matchBase: true
+
+	if typeof _uri is \string
+		uri = Url.parse _uri
+	else if typeof process.env.DEBUG_HOST is \string
+		uri = Url.parse process.env.DEBUG_HOST
+	else if HOME_DIR
+		uri = Url.parse "file://#{HOME_DIR}/.ToolShed/debug.log"
+		# uri = Url.parse "directory://#{HOME_DIR}/.ToolShed/.log/"
+	else
+		uri = Url.parse "console://#{namespace}"
+
+	if not uri.protocol
+		uri.protocol = 'file:'
+	switch uri.protocol
+	| \file: =>
+		if uri.host.length
+			if uri.path is '/'
+				# file://debug.log -> file://./debug.log
+				uri.path += uri.host
+				uri.host = '.'
+		else # host: ''
+			if (path = uri.path).length
+				uri.host = Path.dirname path
+				uri.path = Path.basename path
+			else
+				uri.host = '.log'
+				uri.path = "/#channel.log"
+		mkdirp.sync uri.host
+
+
+
+	if not uri.host
+		throw new Error "shit... we don't know what to do here...."
+
+
+	if not path or not path = Debug.namespaces[namespace]
 		path = process.cwd!
 
-	do_append_msg = (channel, prefix, postfix) ->
-		_write = (msg, channel, prefix, postfix) !->
-			if typeof postfix isnt \string
-				postfix = '\n'
-			else if postfix[*-1] isnt '\n'
-				postfix += '\n'
-			Fs.appendFileSync path, (prefix + msg + postfix)
+	# TODO: make an async version of this which just does array.shift / push and writes async to the file or whatever...
+	if process.env.DEBUG_SYNC
+		uri.sync = true
+	# TODO: add connect / disconnect methods as well..
+	#  - allow for the debug output to be changed in real-time
+	#  - this means, for files we save the offset and resend the params
+	#  - implement this using https://github.com/dominictarr/json-logdb (LogDB)
+	make_debug_interface = (channel, prefix, postfix) ->
+		switch uri.protocol
+		| \file: =>
+			# store everything in a single file
+			_write = (msg, channel, prefix, postfix) !->
+				if typeof postfix isnt \string
+					postfix = '\n'
+				else if postfix[*-1] isnt '\n'
+					postfix += '\n'
+				# TODO: make an async version of this function :)
+				# TODO: make sure process.on \exit it ensures all debug is written out
+				Fs.appendFileSync (Path.join uri.host, uri.path), (prefix + msg + postfix)
+		| \directory: =>
+			# store each namespace in its own file
+			# TODO Rimraf the dir... if lock file doesn't exist, make a lock file, then process.on \exit -> Rimraf dir
+		| \leveldb: =>
+			throw new Error "TODO: leveldb not yet supported"
+			lvl = require \levelup
+			fallthrough
+		| \etcd: =>
+			console.error "TODO: etcd not yet supported"
+			fallthrough
+		| otherwise =>
+			_write = (msg, channel, prefix, postfix) !->
+				if typeof postfix isnt \string
+					postfix = '\n'
+				else if postfix[*-1] isnt '\n'
+					postfix += '\n'
+				Fs.mkdirSync ".log"
+				Fs.appendFileSync "./.log/#{channel}.log", (prefix + msg + postfix)
+
+		# TODO: make this a stream, so I can actually have them stream between each other
+		# TODO: make it possible to override the console.* functions with these, for remote debugging
 
 		if typeof channel is \function
 			write = channel
@@ -52,18 +140,21 @@ Debug = (namespace) ->
 			postfix = ''
 
 		return !->
+			if Debug.matcher and not Debug.matcher.match namespace
+				return
 			msg = printf ...
 			# TODO: make this a stream
 			write msg, channel, prefix, postfix, _write
-			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg}
+			if @emit => @emit if channel => "debug:#channel" else \debug, {message: msg, args: &}
+
 
 
 	if HOME_DIR and not process.env.DEBUG
 		#path = Path.join path, 'debug.log'
-		debug = do_append_msg \debug, "[DEBUG] #{namespace}: "
-		debug.warn = do_append_msg \warn, "[WARN] #{namespace}: "
-		debug.info = do_append_msg \info, "[INFO] #{namespace}: "
-		debug.todo = do_append_msg \todo, "[TODO] #{namespace}: ", (msg, channel, prefix, postfix, write) !->
+		debug = make_debug_interface \debug, "[DEBUG] #{namespace}: "
+		debug.warn = make_debug_interface \warn, "[WARN] #{namespace}: "
+		debug.info = make_debug_interface \info, "[INFO] #{namespace}: "
+		debug.todo = make_debug_interface \todo, "[TODO] #{namespace}: ", (msg, channel, prefix, postfix, write) !->
 			try
 				throw new Error "TODO: error"
 			catch e
@@ -76,10 +167,10 @@ Debug = (namespace) ->
 					i += 1
 				postfix += "\n    at #{stack[i].trim!}"
 			write msg, channel, prefix, postfix
-		debug.error = do_append_msg \error, "[ERROR] #{namespace}: ", (msg, channel, prefix, postfix, _write) ->
+		debug.error = make_debug_interface \error, "[ERROR] #{namespace}: ", (msg, channel, prefix, postfix, _write) ->
 			if not process.env.DEBUG_NO_DEBUGGER => debugger
 			_write ...
-		debug.log = do_append_msg \log, "[LOG] #{namespace}: "
+		debug.log = make_debug_interface \log, "[LOG] #{namespace}: "
 		start = ->
 			# path := Path.join HOME_DIR, '.ToolShed', "#{namespace}-debug.log"
 			path := Path.join HOME_DIR, '.ToolShed', "debug.log"
@@ -95,17 +186,26 @@ Debug = (namespace) ->
 		debug.assert = assert
 
 		start!
+	else if typeof (dbg_uri = process.env.DEBUG_HOST) is \string
+		uri = Url.parse dbg_uri
+		switch uri.protocol
+		| \file: =>
+			console.log "we should save this debug into a file!", uri.path
+		| \leveldb: =>
+			console.log "TODO: leveldb log storage"
+		| \etcd: =>
+			console.log "TODO: etcd log storage"
 	else
 		# EXPLANATION: the reason for the double function is because of invalid invocation feature of console.log
 		if console.debug
-			debug = do_append_msg \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.debug (msg + postfix)
+			debug = make_debug_interface \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.debug (msg + postfix)
 		else
-			debug = do_append_msg \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (prefix + msg + postfix)
-		debug.todo = do_append_msg \todo, " [INFO - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info ('[TODO] ' + msg + postfix)
-		debug.warn = do_append_msg \warn, " [WARN #{namespace}]: ", (msg, channel, prefix, postfix) -> console.warn (msg + postfix)
-		debug.info = do_append_msg \info, " [INFO #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info (msg + postfix)
-		debug.error = do_append_msg \error, " [ERROR #{namespace}]: ", (msg, channel, prefix, postfix) -> console.error (msg + postfix); debugger
-		debug.log = do_append_msg \log, " [LOG #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (msg + postfix)
+			debug = make_debug_interface \debug, " [DEBUG - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (prefix + msg + postfix)
+		debug.todo = make_debug_interface \todo, " [INFO - #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info ('[TODO] ' + msg + postfix)
+		debug.warn = make_debug_interface \warn, " [WARN #{namespace}]: ", (msg, channel, prefix, postfix) -> console.warn (msg + postfix)
+		debug.info = make_debug_interface \info, " [INFO #{namespace}]: ", (msg, channel, prefix, postfix) -> console.info (msg + postfix)
+		debug.error = make_debug_interface \error, " [ERROR #{namespace}]: ", (msg, channel, prefix, postfix) -> console.error (msg + postfix); debugger
+		debug.log = make_debug_interface \log, " [LOG #{namespace}]: ", (msg, channel, prefix, postfix) -> console.log (msg + postfix)
 		debug.assert = assert
 		debug.namespace = ~
 			-> namespace
@@ -139,7 +239,138 @@ class Environment
 
 		@env = env
 
+colors = {
+	black: '\\u001b[030m'
+	red: '\\u001b[31m'
+	green: '\\u001b[32m'
+	yellow: '\\u001b[33m'
+	blue: '\\u001b[34m'
+	purple: '\\u001b[35m'
+	cyan: '\\u001b[36m'
+	white: '\\u001b[37m'
+	none: '\\u001b[0m'
+}
 
+class Executioner
+	(@orders, @cb) ~>
+		if Array.isArray orders
+			@res = new Array orders.length
+		@execute 0
+
+	log: (msg, options) ->
+		msg = colors[options.color] + msg + colors.none if options and options.color
+		console.log msg
+
+	error: (msg, options) ->
+		msg = 'ERROR: ' + msg
+		options = options or {}
+		options.color = 'red'
+		@log msg, options
+
+	success: (msg, options) ->
+		msg = '[✓] ' + msg
+		options = options or {}
+		options.color = 'green'
+		@log msg, options
+
+	execute: (i) ->
+		order = void
+		i = i or 0
+		order = @orders[i]
+		if not order
+			if typeof @cb is \function
+				cb null @res
+		if order.message
+			@execute ++i
+			@log order.message, {order.color}
+			@res[i] = {order.message, order.color}
+		else
+			if order.command
+				exec order.command, (error, stdout, stderr) ~>
+					condition = if typeof order.condition is 'function' then order.condition error, stdout, stderr else error is null
+					if condition
+						@success order.description
+						@res[i] = {order.message, order.color, stdout, stderr}
+					else
+						@error order.description + ' (failed)'
+						console.error 'Error Object:', error, 'STDOUT:', stdout, 'STDERR:', stderr
+						return false if not order.continueOnFail
+					@execute ++i
+
+
+# ripped from: https://github.com/elgs/splitargs/blob/master/splitargs.js
+splitter = (input, separator) ->
+	separator = separator or /\s/g
+	singleQuoteOpen = false
+	doubleQuoteOpen = false
+	tokenBuffer = []
+	ret = []
+	arr = input #.split ''
+	i = 0
+	while i < arr.length
+		element = arr[i]
+		matches = element.match separator
+		console.log element, matches
+		if element is '\''
+			if not doubleQuoteOpen
+				singleQuoteOpen = not singleQuoteOpen
+				continue
+		else
+			if element is '"'
+				if not singleQuoteOpen
+					doubleQuoteOpen = not doubleQuoteOpen
+					continue
+		if not singleQuoteOpen and not doubleQuoteOpen
+			if matches
+				if tokenBuffer and tokenBuffer.length > 0
+					ret.push tokenBuffer.join ''
+					tokenBuffer = []
+			else
+				tokenBuffer.push element
+		else
+			if singleQuoteOpen then tokenBuffer.push element else if doubleQuoteOpen then tokenBuffer.push element
+		console.log "inc"
+		++i
+	if tokenBuffer and tokenBuffer.length > 0 then ret.push tokenBuffer.join ''
+	ret
+
+splitter = (input, separator) ->
+	out = []
+	sep = separator or /\s/g
+	t = input
+	len = input.length
+	i = 0
+	new_text = input+'-'
+	start = 0
+	while i < len
+		if (t[i] is '"' or t[i] is '\'') and i > 0 and t[i - 1] isnt '\\'
+			start = 0
+			if in_quote isnt 0
+				while i < len and not (t[i] is in_quote and t[i - 1] isnt '\\')
+					# if t[i] is '\n' or t[i] is ' '
+					console.log ":", i
+					if t[i].match sep
+						if start > 0
+							# out.push t.substr i, start
+							console.log "found:", i, start, t.substr start, i
+							return false
+						# i = start + 1
+						# start = 0
+					# new_text[++start] = t[i++]
+					i++; start++
+				in_quote = 0
+			else
+				in_quote = t[i]
+		else if t[i].match sep
+			out.push t.substr start, i
+			console.log "found:" t.substr start, i
+			start = i
+
+			# return false
+		i++
+
+# console.log splitter "lala -c 'a string'"
+# assert.eq ['lala', '-c', "'a string'"], splitter "lala -c 'a string'"
 
 scan = (str) ->
 	re = /(?:(\S*"[^"]+")|(\S*'[^']+')|(\S+))/g
@@ -286,7 +517,94 @@ writeFile = (path, data, cb) ->
 		future.wait!
 	else Fs.writeFileSync path, data
 
+_do_spawn = (bin, args, opts, cb) ->
+	# console.log "_spawn bin:", bin, "args:", args, opts
+	# TODO: fix silent mode (for now, it puts everything to the stdout/stderr)
+	# console.log "do_spawn", &
+	if ~bin.indexOf '/scp'
+		console.log "_spawn", &
+	p = _spawn bin, args, opts
+	stdout = ''
+	stderr = ''
+	if p.stdout or true
+		p.stdout.on \data (data) ->
+			stdout += data+''
+			process.stdout.write data unless opts.silent
+	if p.stderr
+		p.stderr.on \data (data) ->
+			stderr += data+''
+			process.stderr.write data unless opts.silent
+	p.on \error (err) ->
+		opts.env = "process.env" if opts.env is process.env
+		debug "exec '#cmd' failed %s", DaFunk.stringify opts
+		cb err
+	p.on \close (code) ->
+		if code
+			debug "spawn: #bin [#{args.join ' '}] -> #code, stdout: '#stdout' stderr: '#stderr'"
+			if debug.deep
+				debug err.stack
+				err = opts.deep_err
+			else
+				err = new Error "exec '#bin' exited with code #code"
+			err.code = code
+		cb err, stdout, stderr
+	return p
+
+do_spawn = (bin, args, opts, cb) ->
+	var fileset, p, matcher
+	_.each args, (cmd, i) ->
+		if ~cmd.indexOf '*'
+			if not p => p := new EventEmitter
+			if not matcher => matcher := []
+			ii = matcher.length
+			matcher.push cmd
+			if not fileset => fileset := require \fileset
+			if cmd.0 isnt '/' and cmd.substr(0, 2) isnt './'
+				cmd = './'+cmd
+			fileset cmd, (err, files) ->
+				matcher.splice matcher.indexOf(cmd), 1
+				if err
+					p.emit \error, err
+				else
+					args[i] := files
+				if matcher.length is 0
+					iii = 0
+					while iii < args.length
+						c = args[iii]
+						if Array.isArray c
+							args.splice.apply args, [iii, 1] ++ c
+							iii += c.length
+						else
+							iii++
+					pp = _do_spawn bin, args, opts, cb
+					pp.on \* ->
+						p.emit.apply self, &
+	if not matcher
+		p = _do_spawn bin, args, opts, cb
+	return p
+
+spawn = (bin, args, opts, cb) ->
+	if typeof opts is \function
+		cb = opts
+	if typeof opts isnt \object
+		opts = {stdio: \pipe}
+
+	do_spawn bin, args, opts, cb
+
 # I really wanna make this much more like procstreams... look into it!
+sh_exec = (cmd, opts, cb) ->
+	if Array.isArray cmd
+		cmd = \' + (cmd.join ' ') + \'
+	else if typeof cmd is \string
+		c = cmd.0
+		if c isnt \' and c isnt \"
+			cmd = '"' + (cmd.trim!replace /"/g, '\\"') + '"'
+	else
+		debug.warn "you're calling sh_exec with a cmd of type: #{typeof cmd}"
+	console.log "exec" '/bin/sh -c '+cmd, opts
+	# console.log "splitter", splitter ('/bin/sh -c '+cmd), ' '
+	do_spawn '/bin/sh', ['-c', cmd], opts, cb
+
 exec = (cmd, opts, cb) ->
 	if typeof opts is \function
 		cb = opts
@@ -302,43 +620,21 @@ exec = (cmd, opts, cb) ->
 		try
 			throw new Error "exec '#cmd' #{DaFunk.stringify opts} failed"
 		catch err
-			deep_err := err
+			opts.deep_err = err
 
 	if opts.stdio is \silent
-		silent = true
+		opts.silent = true
 		opts.stdio = \pipe
 
 	opts.stdio = \pipe unless opts.stdio is \inherit
 	opts.env = process.env if not opts.env
-	cmds = cmd.split ' '
-	# console.log "spawn: ", cmd, opts
-	p = spawn cmds.0, cmds.slice(1), opts
-	# console.log "p:", p
-	stdout = ''
-	stderr = ''
-	if p.stdout or true
-		p.stdout.on \data (data) ->
-			stdout += data+''
-			process.stdout.write data unless silent
-	if p.stderr
-		p.stderr.on \data (data) ->
-			stderr += data+''
-			process.stderr.write data unless silent
-	p.on \error (err) ->
-		opts.env = "process.env" if opts.env is process.env
-		debug "exec '#cmd' failed %s", DaFunk.stringify opts
-		cb err
-	p.on \close (code) ->
-		if code
-			debug "#cmd -> #code, stdout: '#stdout' stderr: '#stderr'"
-			if debug.deep
-				debug err.stack
-				err = deep_err
-			else
-				err = new Error "exec '#cmd' exited with code #code"
-			err.code = code
-		cb err, stdout, stderr
-	return p
+	cmds = cmd.split /[\n ]+/
+	# TODO: use splitter to split these commands correctly
+	# omg, this is such fail when args are spaces and shit... example – ambiente.exec \scp '/Users/Javier Díaz Edokoa de la Fuente/Diseño/Blueshift/assets/*', '/opt/assets' - for example...
+	# make splitter work correctly parse the quotes...
+
+	bin = cmds.shift!
+	do_spawn bin, cmds, opts, cb
 
 searchDownwardFor = (file, dir, cb) ->
 	if typeof dir is \function
@@ -470,19 +766,18 @@ set_obj_path = (path, obj, val, split, subsplit) ->
 
 			if paths.length is 0
 				subobj[path] = val
-				subobj[path+'_____________dynset'] = true
-				obj._dynset = true
 			else
 				_subobj = subobj[path]
-				if typeof _subobj is \undefined
-					debugger
-					_subobj = {}
-					subobj[path] = _subobj
 				subobj = _subobj
 	else
 		# TODO: add a @debug.fixme "you called set_obj_path without a resolvable path"
 		debug.warn "could not find a path to set to. this is probably not intended"
 
+
+# this is because I didn't follow c calling convention :(
+# I'm gonna bikeshed this bitch and fix it ... later :)
+obj_set_path = (obj, path, val, split, subsplit) -> set_obj_path path, obj, val, split, subsplit
+obj_get_path = (obj, path, split) -> get_obj_path path, obj, split
 
 export _
 export EventEmitter
@@ -493,6 +788,7 @@ export Environment
 export v8_mode
 export Debug
 export Future
+export splitter
 export parse
 export rm
 export isDirectory
@@ -506,8 +802,12 @@ export readdir
 export readFile
 export writeFile
 export exec
+export sh_exec
+export spawn
 export searchDownwardFor
 export recursive_hardlink
 export debug_fn
 export get_obj_path
 export set_obj_path
+export obj_get_path
+export obj_set_path
